@@ -1,10 +1,20 @@
-
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Car, CalendarRange, Users, Wallet, Menu, X, UserCog, CalendarClock, Settings, LogOut, MapPin, Receipt, PieChart, UserCircle } from 'lucide-react';
-import { initializeData, getStoredData, DEFAULT_SETTINGS } from './services/dataService';
+
+// UPDATE IMPORTS: Menambahkan Mock Data untuk Fallback
+import { 
+  getStoredData, 
+  DEFAULT_SETTINGS, 
+  INITIAL_CARS, 
+  INITIAL_PARTNERS, 
+  INITIAL_DRIVERS, 
+  INITIAL_CUSTOMERS, 
+  INITIAL_HIGH_SEASONS 
+} from './services/dataService';
+
 import { getCurrentUser, logout } from './services/authService';
-import { User, AppSettings } from './types';
+import { User, AppSettings, Car as CarType, Partner, Driver, Customer, HighSeason } from './types'; // Pastikan Type diimport
 import { Logo, LogoText } from './components/Logo';
 import Dashboard from './pages/Dashboard';
 import BookingPage from './pages/BookingPage';
@@ -19,10 +29,9 @@ import DriverTrackingPage from './pages/DriverTrackingPage';
 import ExpensesPage from './pages/ExpensesPage';
 import StatisticsPage from './pages/StatisticsPage';
 
-// Initialize mock data
-initializeData();
+// HAPUS: initializeData(); // Tidak lagi digunakan karena kita pakai hybrid fetch di dalam component
 
-// --- THEME ENGINE ---
+// --- THEME ENGINE (TIDAK BERUBAH) ---
 const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string, text: string}} = {
     red: { main: '#DC2626', hover: '#B91C1C', light: '#FEF2F2', text: '#DC2626' },
     blue: { main: '#2563EB', hover: '#1D4ED8', light: '#EFF6FF', text: '#2563EB' },
@@ -42,7 +51,6 @@ const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
         }
 
         // 2. Handle Color Theme Injection
-        // We override the standard 'red' and 'indigo' classes used in the app to match the selected theme
         const color = THEME_COLORS[settings.themeColor || 'red'] || THEME_COLORS['red'];
         
         const styleId = 'brc-theme-styles';
@@ -79,6 +87,7 @@ const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
     return null;
 };
 
+// --- COMPONENTS (Sidebar, Nav) ---
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
@@ -103,7 +112,7 @@ const BottomNavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label
   );
 };
 
-// Layout Component to wrap protected routes
+// --- APP LAYOUT ---
 const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, user: User, onLogout: () => void }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -114,12 +123,23 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
   const isDriver = user.role === 'driver';
   const isPartner = user.role === 'partner';
   
-  // Admin & SuperAdmin share most operational views
   const isOperational = isStaff || isSuperAdmin;
 
+  // UPDATE: Menggunakan Async/Await untuk memuat Settings dari Firebase (atau fallback)
   useEffect(() => {
-    const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-    setSettings(loadedSettings);
+    const loadSettings = async () => {
+        try {
+            const loadedSettings = await getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
+            // Type assertion atau check diperlukan karena return type bisa array atau object
+            if (loadedSettings && !Array.isArray(loadedSettings)) {
+                 setSettings(loadedSettings as AppSettings);
+            }
+        } catch (error) {
+            console.error("Gagal memuat settings:", error);
+            setSettings(DEFAULT_SETTINGS);
+        }
+    };
+    loadSettings();
   }, []);
 
   const UserProfile = ({ showName = true }) => (
@@ -306,8 +326,8 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
               </>
           ) : isPartner ? (
               <>
-                 <BottomNavItem to="/partners" icon={Users} label="Pendapatan" />
-                 <BottomNavItem to="/fleet" icon={Car} label="Unit" />
+                  <BottomNavItem to="/partners" icon={Users} label="Pendapatan" />
+                  <BottomNavItem to="/fleet" icon={Car} label="Unit" />
               </>
           ) : (
               <>
@@ -330,14 +350,35 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
   );
 };
 
+// --- APP COMPONENT UTAMA ---
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // UPDATE: Inisialisasi Asinkron
   useEffect(() => {
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
-    setLoading(false);
+    const initApp = async () => {
+        // "Warm up" koneksi database dengan mencoba mengambil data,
+        // meskipun kita tidak menyimpannya di state App (tiap halaman ambil sendiri).
+        // Ini memastikan 'getStoredData' dipanggil dan logika fallback aktif.
+        try {
+            await Promise.all([
+                getStoredData<CarType>('cars', INITIAL_CARS),
+                getStoredData<Partner>('partners', INITIAL_PARTNERS),
+                getStoredData<Driver>('drivers', INITIAL_DRIVERS),
+                getStoredData<Customer>('customers', INITIAL_CUSTOMERS),
+                getStoredData<HighSeason>('highSeasons', INITIAL_HIGH_SEASONS)
+            ]);
+        } catch (e) {
+            console.log("Inisialisasi data background selesai (dengan fallback).");
+        }
+
+        const currentUser = getCurrentUser();
+        setUser(currentUser);
+        setLoading(false);
+    };
+
+    initApp();
   }, []);
 
   const handleLogin = () => {
