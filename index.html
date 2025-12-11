@@ -11,9 +11,7 @@
         darkMode: 'class',
         theme: {
           extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            }
+            fontFamily: { sans: ['Inter', 'sans-serif'] }
           }
         }
       }
@@ -23,17 +21,16 @@
 
     <style>
       body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+      /* Scrollbar Styling */
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       .dark ::-webkit-scrollbar-thumb { background: #475569; }
-      .dark ::-webkit-scrollbar-track { background: #0f172a; }
     </style>
   </head>
   <body>
     <div id="root"></div>
     
-    <script type="module" src="./index.tsx"></script> 
+    <script type="module" src="/src/main.tsx"></script> 
   </body>
 </html>
