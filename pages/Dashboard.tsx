@@ -1,3 +1,5 @@
+import { db } from '../services/firebaseService';
+import { collection, addDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Booking, BookingStatus, Car, PaymentStatus } from '../types';
