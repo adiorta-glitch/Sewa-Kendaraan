@@ -12,16 +12,6 @@ const firebaseConfig = {
   appId: "1:1033232570934:web:8a1563bb84deafccd29697",
   measurementId: "G-BW9MHSRB6N"
 };
-// JANGAN PAKAI import.meta.env LAGI. Langsung tempel string-nya.
-const firebaseConfig = {
-  apiKey: "AIzaSyDy..........................", // <--- Tempel API Key ASLI Anda di sini
-  authDomain: "sewa-kendaraan-xxxx.firebaseapp.com", // <--- Tempel authDomain ASLI
-  projectId: "sewa-kendaraan-xxxx", // <--- Tempel projectId ASLI
-  storageBucket: "sewa-kendaraan-xxxx.appspot.com", // <--- Tempel storageBucket ASLI
-  messagingSenderId: "1234567890", // <--- Tempel Sender ID ASLI
-  appId: "1:1234567890:web:xxxxxxxxx" // <--- Tempel App ID ASLI
-};
-// ---------------------------------------------------
 
 // Inisialisasi Firebase
 const app = initializeApp(firebaseConfig);
