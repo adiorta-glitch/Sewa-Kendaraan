@@ -166,7 +166,28 @@ const Dashboard = () => {
             })}
         </div>
       </div>
-
+      {/* --- TOMBOL TES KONEKSI --- */}
+<div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
+  <h3 className="font-bold text-yellow-800 mb-2">Tes Koneksi Database</h3>
+  <button 
+    onClick={async () => {
+      try {
+        alert("Mencoba mengirim data ke Firebase...");
+        const docRef = await addDoc(collection(db, "tes_koneksi"), {
+          pesan: "Halo Firebase!",
+          waktu: new Date().toString()
+        });
+        alert("BERHASIL! ID Dokumen: " + docRef.id + "\n\nCek Firebase Console sekarang, harusnya ada koleksi 'tes_koneksi'.");
+      } catch (e: any) {
+        alert("GAGAL KONEKSI:\n" + e.message);
+      }
+    }}
+    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+  >
+    Uji Coba Tulis Data
+  </button>
+</div>
+{/* ------------------------- */}
       {/* Revenue Chart */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h3 className="font-bold text-lg text-slate-800 mb-6">Pendapatan 7 Hari Terakhir</h3>
