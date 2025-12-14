@@ -1,14 +1,14 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Car, Partner, User, AppSettings } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS, exportToCSV, processCSVImport, mergeData } from '../services/dataService';
 import { Plus, Trash2, Edit2, User as UserIcon, Upload, Image as ImageIcon, X, Download, FileSpreadsheet } from 'lucide-react';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const FleetPage: React.FC<Props> = ({ currentUser }) => {
+  // --- 1. STATE INITIALIZATION ---
   const [cars, setCars] = useState<Car[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -28,14 +28,36 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
   const isSuperAdmin = currentUser.role === 'superadmin';
   const isPartnerView = currentUser.role === 'partner';
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setCars(getStoredData<Car[]>('cars', []));
-    setPartners(getStoredData<Partner[]>('partners', []));
+    // Load Data & Sanitize immediately
+    const rawCars = getStoredData<Car[]>('cars', []);
+    const rawPartners = getStoredData<Partner[]>('partners', []);
     const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-    setSettings(loadedSettings);
+
+    setCars(normalizeData(rawCars));
+    setPartners(normalizeData(rawPartners));
+    
+    // Pastikan array di dalam settings juga aman
+    setSettings({
+        ...loadedSettings,
+        carCategories: normalizeData(loadedSettings.carCategories),
+        rentalPackages: normalizeData(loadedSettings.rentalPackages)
+    });
   }, []);
 
   const openModal = (car?: Car) => {
+    // Ambil kategori pertama yang aman
+    const safeCategories = normalizeData(settings.carCategories);
+    const defaultCategory = safeCategories.length > 0 ? safeCategories[0] : 'MPV';
+
     if (car) {
         setEditingCar(car);
         setName(car.name);
@@ -55,7 +77,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
         setEditingCar(null);
         setName('');
         setPlate('');
-        setType(settings.carCategories[0] || 'MPV');
+        setType(defaultCategory);
         setPartnerId(isPartnerView ? (currentUser.linkedPartnerId || '') : ''); 
         setImagePreview(null);
         setPrices({});
@@ -104,11 +126,13 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
         image: finalImage
     };
 
+    const currentCars = normalizeData(cars);
     let updatedCars;
+
     if (editingCar) {
-        updatedCars = cars.map(c => c.id === editingCar.id ? newCar : c);
+        updatedCars = currentCars.map(c => c.id === editingCar.id ? newCar : c);
     } else {
-        updatedCars = [...cars, newCar];
+        updatedCars = [...currentCars, newCar];
     }
 
     setCars(updatedCars);
@@ -118,7 +142,8 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDelete = (id: string) => {
       if(confirm('Apakah Anda yakin ingin menghapus data mobil ini?')) {
-          const updated = cars.filter(c => c.id !== id);
+          const currentCars = normalizeData(cars);
+          const updated = currentCars.filter(c => c.id !== id);
           setCars(updated);
           setStoredData('cars', updated);
       }
@@ -133,9 +158,11 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
       return car.price24h || 0;
   };
 
+  // Safe Rendering Variables
+  const safeCars = normalizeData(cars);
   const displayedCars = isPartnerView 
-      ? cars.filter(c => c.partnerId === currentUser.linkedPartnerId) 
-      : cars;
+      ? safeCars.filter(c => c.partnerId === currentUser.linkedPartnerId) 
+      : safeCars;
 
   const handleExport = () => exportToCSV(displayedCars, 'Data_Armada_BRC');
   
@@ -286,7 +313,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700">Tipe / Kategori</label>
                                     <select className="w-full border border-slate-300 rounded-lg p-2.5 mt-1" value={type} onChange={e => setType(e.target.value)}>
-                                        {settings.carCategories.map(cat => (
+                                        {normalizeData(settings.carCategories).map((cat: string) => (
                                             <option key={cat} value={cat}>{cat}</option>
                                         ))}
                                     </select>
@@ -296,7 +323,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                                   <label className="block text-sm font-medium text-slate-700">Pemilik Unit (Mitra)</label>
                                   <select disabled={isPartnerView} className="w-full border border-slate-300 rounded-lg p-2.5 mt-1 disabled:bg-slate-100" value={partnerId} onChange={e => setPartnerId(e.target.value)}>
                                       <option value="">Milik Perusahaan (Sendiri)</option>
-                                      {partners.map(p => (
+                                      {normalizeData(partners).map((p: Partner) => (
                                           <option key={p.id} value={p.id}>{p.name} (Bagi: {p.splitPercentage}%)</option>
                                       ))}
                                   </select>
@@ -307,8 +334,9 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                       <div className="pt-4 border-t border-slate-100">
                           <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2 border-b pb-2 text-indigo-700 border-indigo-100">Pengaturan Harga Sewa</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
-                            {settings.rentalPackages.length > 0 ? (
-                                settings.rentalPackages.map(pkg => (
+                            {/* normalizeData settings.rentalPackages */}
+                            {normalizeData(settings.rentalPackages).length > 0 ? (
+                                normalizeData(settings.rentalPackages).map((pkg: string) => (
                                     <div key={pkg}>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">{pkg}</label>
                                         <div className="relative">
