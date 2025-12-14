@@ -23,10 +23,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const navigate = useNavigate();
 
+  // --- 1. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
       const storedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-      setSettings(storedSettings);
-      setBiometricUsers(getBiometricUsers());
+      setSettings(storedSettings || DEFAULT_SETTINGS);
+      
+      // Ambil dan bersihkan data user biometrik
+      const rawBiometricUsers = getBiometricUsers();
+      setBiometricUsers(normalizeData(rawBiometricUsers));
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,21 +185,25 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <div className="w-full max-w-xs space-y-4">
                         <h4 className="text-lg font-bold text-slate-800">Pilih Akun</h4>
                         <p className="text-sm text-slate-500">Sentuh sensor (klik akun) untuk login</p>
-                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                            {biometricUsers.map(u => (
-                                <button 
-                                    key={u.id}
-                                    onClick={() => scanFingerprint(u.id)}
-                                    className="w-full flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left"
-                                >
-                                    <img src={u.image || `https://ui-avatars.com/api/?name=${u.name}`} className="w-10 h-10 rounded-full object-cover bg-slate-100" />
-                                    <div>
-                                        <p className="font-bold text-sm text-slate-800">{u.name}</p>
-                                        <p className="text-xs text-slate-500 capitalize">{u.role}</p>
-                                    </div>
-                                    <Fingerprint size={20} className="ml-auto text-indigo-500 opacity-50" />
-                                </button>
-                            ))}
+                        <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                            {biometricUsers.length > 0 ? (
+                                biometricUsers.map(u => (
+                                    <button 
+                                        key={u.id}
+                                        onClick={() => scanFingerprint(u.id)}
+                                        className="w-full flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left"
+                                    >
+                                        <img src={u.image || `https://ui-avatars.com/api/?name=${u.name}`} className="w-10 h-10 rounded-full object-cover bg-slate-100" />
+                                        <div>
+                                            <p className="font-bold text-sm text-slate-800">{u.name}</p>
+                                            <p className="text-xs text-slate-500 capitalize">{u.role}</p>
+                                        </div>
+                                        <Fingerprint size={20} className="ml-auto text-indigo-500 opacity-50" />
+                                    </button>
+                                ))
+                            ) : (
+                                <p className="text-xs text-red-500 italic">Data user corrupt atau kosong.</p>
+                            )}
                         </div>
                     </div>
                 )}
