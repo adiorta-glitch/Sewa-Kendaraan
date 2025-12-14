@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Partner, Booking, Car, User, Transaction } from '../types';
 import { getStoredData, setStoredData, exportToCSV, processCSVImport, mergeData } from '../services/dataService';
@@ -6,10 +5,11 @@ import { generateMonthlyReportPDF } from '../services/pdfService';
 import { Plus, Trash2, Phone, Edit2, X, Image as ImageIcon, History, Calendar, CheckCircle, Clock, Wallet, Download, Upload, FileText } from 'lucide-react';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const PartnersPage: React.FC<Props> = ({ currentUser }) => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [partners, setPartners] = useState<Partner[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
@@ -33,11 +33,25 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
   const isSuperAdmin = currentUser.role === 'superadmin';
   const isPartnerView = currentUser.role === 'partner';
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setPartners(getStoredData<Partner[]>('partners', []));
-    setBookings(getStoredData<Booking[]>('bookings', []));
-    setCars(getStoredData<Car[]>('cars', []));
-    setTransactions(getStoredData<Transaction[]>('transactions', []));
+    // Load Data & Sanitize
+    const rawPartners = getStoredData<Partner[]>('partners', []);
+    const rawBookings = getStoredData<Booking[]>('bookings', []);
+    const rawCars = getStoredData<Car[]>('cars', []);
+    const rawTrans = getStoredData<Transaction[]>('transactions', []);
+
+    setPartners(normalizeData(rawPartners));
+    setBookings(normalizeData(rawBookings));
+    setCars(normalizeData(rawCars));
+    setTransactions(normalizeData(rawTrans));
   }, []);
 
   const openModal = (partner?: Partner) => {
@@ -92,11 +106,13 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
         image: finalImage
     };
 
+    const currentPartners = normalizeData(partners);
     let updatedPartners;
+
     if (editingPartner) {
-        updatedPartners = partners.map(p => p.id === editingPartner.id ? newPartner : p);
+        updatedPartners = currentPartners.map(p => p.id === editingPartner.id ? newPartner : p);
     } else {
-        updatedPartners = [...partners, newPartner];
+        updatedPartners = [...currentPartners, newPartner];
     }
 
     setPartners(updatedPartners);
@@ -106,40 +122,51 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDelete = (id: string) => {
       if(confirm('Hapus data mitra ini?')) {
-          const updated = partners.filter(p => p.id !== id);
+          const currentPartners = normalizeData(partners);
+          const updated = currentPartners.filter(p => p.id !== id);
           setPartners(updated);
           setStoredData('partners', updated);
       }
   };
 
   const calculatePartnerIncome = (partnerId: string) => {
-      const partnerCarIds = cars.filter(c => c.partnerId === partnerId).map(c => c.id);
-      
-      const totalRevenue = bookings
-        .filter(b => partnerCarIds.includes(b.carId) && b.status !== 'Cancelled')
-        .reduce((sum, b) => sum + b.totalPrice, 0);
+      // Pastikan data cars dan bookings aman
+      const safeCars = normalizeData(cars);
+      const safeBookings = normalizeData(bookings);
 
-      const partner = partners.find(p => p.id === partnerId);
+      const partnerCarIds = safeCars.filter(c => c.partnerId === partnerId).map(c => c.id);
+      
+      const totalRevenue = safeBookings
+        .filter(b => partnerCarIds.includes(b.carId) && b.status !== 'Cancelled')
+        .reduce((sum, b) => sum + (Number(b.totalPrice) || 0), 0);
+
+      const partner = normalizeData(partners).find(p => p.id === partnerId);
       const split = partner ? partner.splitPercentage / 100 : 0;
       
       return totalRevenue * split;
   };
 
+  const safePartners = normalizeData(partners);
   const displayedPartners = isPartnerView 
-    ? partners.filter(p => p.id === currentUser.linkedPartnerId) 
-    : partners;
+    ? safePartners.filter(p => p.id === currentUser.linkedPartnerId) 
+    : safePartners;
+
+  // Helper untuk History (Safe)
+  const safeCars = normalizeData(cars);
+  const safeBookings = normalizeData(bookings);
+  const safeTransactions = normalizeData(transactions);
 
   const getPartnerBookings = () => {
       if(!historyPartner) return [];
-      const partnerCarIds = cars.filter(c => c.partnerId === historyPartner.id).map(c => c.id);
-      return bookings
+      const partnerCarIds = safeCars.filter(c => c.partnerId === historyPartner.id).map(c => c.id);
+      return safeBookings
         .filter(b => partnerCarIds.includes(b.carId))
         .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   };
 
   const getPartnerDeposits = () => {
       if(!historyPartner) return [];
-      return transactions.filter(t => t.category === 'Setor Mitra' && t.relatedId === historyPartner.id)
+      return safeTransactions.filter(t => t.category === 'Setor Mitra' && t.relatedId === historyPartner.id)
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
@@ -201,7 +228,7 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {displayedPartners.map(partner => {
               const income = calculatePartnerIncome(partner.id);
-              const carCount = cars.filter(c => c.partnerId === partner.id).length;
+              const carCount = safeCars.filter(c => c.partnerId === partner.id).length;
 
               return (
                 <div key={partner.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -250,7 +277,7 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
                     <div className="text-sm text-slate-500 mt-4 pt-4 border-t border-slate-100">
                         <p className="mb-2 font-medium">Mobil Dimiliki:</p>
                         <ul className="list-disc pl-5 space-y-1">
-                            {cars.filter(c => c.partnerId === partner.id).map(c => (
+                            {safeCars.filter(c => c.partnerId === partner.id).map(c => (
                                 <li key={c.id}>{c.name} ({c.plate})</li>
                             ))}
                             {carCount === 0 && <li>Belum ada unit.</li>}
@@ -327,107 +354,107 @@ const PartnersPage: React.FC<Props> = ({ currentUser }) => {
       {/* HISTORY MODAL */}
       {isHistoryModalOpen && historyPartner && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-               <div className="bg-white rounded-xl w-full max-w-3xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-                    <div className="flex justify-between items-start mb-6">
-                         <div className="flex items-center gap-4">
-                            <img src={historyPartner.image} alt={historyPartner.name} className="w-14 h-14 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
-                            <div>
-                                <h3 className="font-bold text-xl text-slate-800">{historyPartner.name}</h3>
-                                <p className="text-sm text-slate-500">Detail Riwayat & Setoran</p>
-                            </div>
-                         </div>
-                         <div className="flex gap-2">
+                <div className="bg-white rounded-xl w-full max-w-3xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+                     <div className="flex justify-between items-start mb-6">
+                          <div className="flex items-center gap-4">
+                             <img src={historyPartner.image} alt={historyPartner.name} className="w-14 h-14 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
+                             <div>
+                                 <h3 className="font-bold text-xl text-slate-800">{historyPartner.name}</h3>
+                                 <p className="text-sm text-slate-500">Detail Riwayat & Setoran</p>
+                             </div>
+                          </div>
+                          <div className="flex gap-2">
                              <button onClick={handleDownloadReport} className="flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-slate-900">
-                                 <FileText size={16}/> Download Laporan Bulanan
+                                  <FileText size={16}/> Download Laporan Bulanan
                              </button>
                              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
-                         </div>
-                    </div>
+                          </div>
+                     </div>
 
-                    <div className="flex gap-2 border-b border-slate-100 mb-4">
-                        <button 
-                            onClick={() => setActiveHistoryTab('bookings')}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'bookings' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Riwayat Sewa Unit
-                        </button>
-                        <button 
-                            onClick={() => setActiveHistoryTab('deposits')}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'deposits' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Riwayat Setoran
-                        </button>
-                    </div>
+                     <div className="flex gap-2 border-b border-slate-100 mb-4">
+                         <button 
+                             onClick={() => setActiveHistoryTab('bookings')}
+                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'bookings' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                         >
+                             Riwayat Sewa Unit
+                         </button>
+                         <button 
+                             onClick={() => setActiveHistoryTab('deposits')}
+                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'deposits' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                         >
+                             Riwayat Setoran
+                         </button>
+                     </div>
 
-                    <div className="min-h-[300px]">
-                        {activeHistoryTab === 'bookings' && (
-                            <div className="space-y-3">
-                                {getPartnerBookings().length === 0 ? (
-                                    <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat penyewaan unit mitra ini.</div>
-                                ) : (
-                                    getPartnerBookings().map(booking => {
-                                        const car = cars.find(c => c.id === booking.carId);
-                                        return (
-                                            <div key={booking.id} className="p-3 border rounded-lg bg-slate-50 flex justify-between items-center">
-                                                <div>
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-bold bg-white border px-1.5 py-0.5 rounded text-slate-700">{booking.id.slice(0,6)}</span>
-                                                        <span className="text-sm font-bold text-slate-800">{booking.customerName}</span>
-                                                    </div>
-                                                    <div className="text-xs text-slate-600 flex items-center gap-2">
-                                                        <span className="flex items-center gap-1"><Calendar size={10}/> {new Date(booking.startDate).toLocaleDateString('id-ID')}</span>
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 mt-1">Unit: {car?.name} ({car?.plate})</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    {/* HIDE PRICE FOR PARTNER */}
-                                                    <div className="text-sm font-bold text-indigo-700 hidden">Rp {booking.totalPrice.toLocaleString('id-ID')}</div>
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold mt-1 inline-block ${booking.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                        {booking.status}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })
-                                )}
-                            </div>
-                        )}
+                     <div className="min-h-[300px]">
+                         {activeHistoryTab === 'bookings' && (
+                             <div className="space-y-3">
+                                 {getPartnerBookings().length === 0 ? (
+                                     <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat penyewaan unit mitra ini.</div>
+                                 ) : (
+                                     getPartnerBookings().map(booking => {
+                                         const car = safeCars.find(c => c.id === booking.carId);
+                                         return (
+                                             <div key={booking.id} className="p-3 border rounded-lg bg-slate-50 flex justify-between items-center">
+                                                 <div>
+                                                     <div className="flex items-center gap-2 mb-1">
+                                                         <span className="text-xs font-bold bg-white border px-1.5 py-0.5 rounded text-slate-700">{booking.id.slice(0,6)}</span>
+                                                         <span className="text-sm font-bold text-slate-800">{booking.customerName}</span>
+                                                     </div>
+                                                     <div className="text-xs text-slate-600 flex items-center gap-2">
+                                                         <span className="flex items-center gap-1"><Calendar size={10}/> {new Date(booking.startDate).toLocaleDateString('id-ID')}</span>
+                                                     </div>
+                                                     <div className="text-xs text-slate-500 mt-1">Unit: {car?.name} ({car?.plate})</div>
+                                                 </div>
+                                                 <div className="text-right">
+                                                     {/* HIDE PRICE FOR PARTNER */}
+                                                     <div className="text-sm font-bold text-indigo-700 hidden">Rp {booking.totalPrice.toLocaleString('id-ID')}</div>
+                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold mt-1 inline-block ${booking.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                         {booking.status}
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                         )
+                                     })
+                                 )}
+                             </div>
+                         )}
 
-                        {activeHistoryTab === 'deposits' && (
-                            <div className="space-y-3">
-                                {getPartnerDeposits().length === 0 ? (
-                                    <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat setoran.</div>
-                                ) : (
-                                    getPartnerDeposits().map(tx => (
-                                        <div key={tx.id} className="p-3 border rounded-lg bg-white flex justify-between items-center">
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-800">{tx.description}</div>
-                                                <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
-                                                    <span>{new Date(tx.date).toLocaleDateString('id-ID')}</span>
-                                                    <span className="px-1.5 py-0.5 bg-slate-100 rounded">{tx.category}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-sm font-bold text-green-600">Rp {tx.amount.toLocaleString('id-ID')}</div>
-                                                <div className="mt-1">
-                                                    {tx.status === 'Paid' ? (
-                                                        <span className="flex items-center justify-end gap-1 text-[10px] text-green-600 font-bold">
-                                                            <CheckCircle size={10}/> Sudah Dibayarkan
-                                                        </span>
-                                                    ) : (
-                                                        <span className="flex items-center justify-end gap-1 text-[10px] text-orange-500 font-bold">
-                                                            <Clock size={10}/> Setoran Ditahan
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        )}
-                    </div>
-               </div>
+                         {activeHistoryTab === 'deposits' && (
+                             <div className="space-y-3">
+                                 {getPartnerDeposits().length === 0 ? (
+                                     <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat setoran.</div>
+                                 ) : (
+                                     getPartnerDeposits().map(tx => (
+                                         <div key={tx.id} className="p-3 border rounded-lg bg-white flex justify-between items-center">
+                                             <div>
+                                                 <div className="text-sm font-bold text-slate-800">{tx.description}</div>
+                                                 <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                                                     <span>{new Date(tx.date).toLocaleDateString('id-ID')}</span>
+                                                     <span className="px-1.5 py-0.5 bg-slate-100 rounded">{tx.category}</span>
+                                                 </div>
+                                             </div>
+                                             <div className="text-right">
+                                                 <div className="text-sm font-bold text-green-600">Rp {tx.amount.toLocaleString('id-ID')}</div>
+                                                 <div className="mt-1">
+                                                     {tx.status === 'Paid' ? (
+                                                         <span className="flex items-center justify-end gap-1 text-[10px] text-green-600 font-bold">
+                                                             <CheckCircle size={10}/> Sudah Dibayarkan
+                                                         </span>
+                                                     ) : (
+                                                         <span className="flex items-center justify-end gap-1 text-[10px] text-orange-500 font-bold">
+                                                             <Clock size={10}/> Setoran Ditahan
+                                                         </span>
+                                                     )}
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     ))
+                                 )}
+                             </div>
+                         )}
+                     </div>
+                </div>
           </div>
       )}
     </div>
