@@ -3,7 +3,7 @@ import { db } from './firebaseService';
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore'; 
 
 // ==========================================
-// 1. DATA MOCKUP (CADANGAN)
+// 1. DATA MOCKUP (DEFAULT)
 // ==========================================
 
 export const INITIAL_PARTNERS: Partner[] = [
@@ -47,38 +47,35 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 // ==========================================
-// 2. FUNGSI LOGIKA (DENGAN PENGAMAN ANTI-BLANK)
+// 2. FUNGSI LOGIKA (SAFE MODE)
 // ==========================================
 
 export const getStoredData = async <T extends { id: string }>(
   collectionName: string, 
   fallbackData: T[] | T
 ): Promise<T[] | T> => {
-    
-    // PENGAMAN 1: Pastikan data cadangan selalu siap
     const safeFallback = fallbackData || [];
 
-    // --- KASUS 1: SETTING APLIKASI (Single Object) ---
+    // KASUS 1: SETTING (Single Object)
     if (collectionName === 'appSettings') {
         try {
             const snapshot = await getDocs(collection(db, collectionName));
             if (!snapshot.empty) return snapshot.docs[0].data() as T;
             return safeFallback as T;
         } catch (error) {
-            console.error(`[FIREBASE ERROR] Settings:`, error);
+            console.error(`[FIREBASE] Error Settings:`, error);
             return safeFallback as T;
         }
     }
 
-    // --- KASUS 2: DATA LIST (Array) ---
+    // KASUS 2: DATA LIST (Array)
     try {
         const colRef = collection(db, collectionName);
         const snapshot = await getDocs(colRef);
         
-        // PENGAMAN 2: Jika data kosong atau error, PASTI kembalikan Array kosong []
-        // Ini mencegah error "filter is not a function"
         if (snapshot.empty) {
             console.warn(`[FIREBASE] ${collectionName} kosong, pakai Mockup.`);
+            // Pastikan return Array
             return Array.isArray(safeFallback) ? safeFallback : [];
         }
 
@@ -86,7 +83,7 @@ export const getStoredData = async <T extends { id: string }>(
         return Array.isArray(data) ? data : [];
 
     } catch (error) {
-        console.error(`[FIREBASE ERROR] ${collectionName}:`, error);
+        console.error(`[FIREBASE] Error ${collectionName}:`, error);
         return Array.isArray(safeFallback) ? safeFallback : [];
     }
 };
@@ -102,10 +99,9 @@ export const setStoredData = async <T extends { id: string }>(key: string, data:
             const docRef = doc(db, key, 'current');
             await setDoc(docRef, data as any, { merge: true });
         }
-        console.log(`[FIREBASE] Sukses menyimpan ${key}`);
+        console.log(`[FIREBASE] Sukses simpan ${key}`);
     } catch (error) {
-        console.error(`[FIREBASE ERROR] Gagal menyimpan ${key}`, error);
-        localStorage.setItem(key, JSON.stringify(data));
+        console.error(`[FIREBASE] Gagal simpan ${key}`, error);
     }
 };
 
@@ -114,7 +110,7 @@ export const setStoredData = async <T extends { id: string }>(key: string, data:
 // ==========================================
 
 export const checkAvailability = (carId: string, startDate: string, endDate: string, bookings: Booking[]): boolean => {
-  if (!bookings || !Array.isArray(bookings)) return true; // PENGAMAN 3
+  if (!bookings || !Array.isArray(bookings)) return true;
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
 
