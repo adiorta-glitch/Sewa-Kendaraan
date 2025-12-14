@@ -12,6 +12,7 @@ import { getStoredData } from '../services/dataService';
 import { Car as CarType, Booking, Transaction } from '../types';
 
 const Dashboard = () => {
+  // Inisialisasi state dengan Array Kosong [] agar tidak pernah undefined
   const [cars, setCars] = useState<CarType[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -20,14 +21,14 @@ const Dashboard = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        // Ambil data dengan Fallback Array Kosong [] agar tidak crash
+        // Ambil data dengan Fallback Array Kosong []
         const [carsData, bookingsData, transData] = await Promise.all([
           getStoredData<CarType>('cars', []),
           getStoredData<Booking>('bookings', []),
           getStoredData<Transaction>('transactions', [])
         ]);
 
-        // Pastikan yang masuk state ADALAH ARRAY (Safety Check)
+        // PENGAMAN GANDA: Pastikan yang masuk state ADALAH ARRAY
         setCars(Array.isArray(carsData) ? carsData : []);
         setBookings(Array.isArray(bookingsData) ? bookingsData : []);
         setTransactions(Array.isArray(transData) ? transData : []);
@@ -41,26 +42,26 @@ const Dashboard = () => {
     loadDashboardData();
   }, []);
 
-  // --- LOGIKA HITUNGAN (Safe Mode) ---
+  // --- LOGIKA HITUNGAN (Safe Mode / Anti-Crash) ---
   
-  // 1. Hitung Unit Ready
-  const readyUnits = cars.filter(c => c.status === 'Available').length;
-  const totalUnits = cars.length;
+  // 1. Hitung Unit Ready (Gunakan optional chaining ? dan default value)
+  const readyUnits = cars?.filter(c => c.status === 'Available')?.length || 0;
+  const totalUnits = cars?.length || 0;
 
-  // 2. Hitung Pendapatan (Gunakan reduce dengan initial value 0 agar tidak error)
-  const totalRevenue = transactions.reduce((total, t) => {
+  // 2. Hitung Pendapatan
+  const totalRevenue = transactions?.reduce((total, t) => {
      return total + (Number(t.amount) || 0);
-  }, 0);
+  }, 0) || 0;
 
   // 3. Hitung Booking Hari Ini
   const today = new Date().toISOString().split('T')[0];
-  const todayBookings = bookings.filter(b => b.startDate.startsWith(today)).length;
+  const todayBookings = bookings?.filter(b => b && b.startDate && b.startDate.startsWith(today))?.length || 0;
 
-  // 4. Hitung Unit Sedang Jalan (Active)
-  const activeBookings = bookings.filter(b => b.status === 'Active').length;
+  // 4. Hitung Unit Sedang Jalan
+  const activeBookings = bookings?.filter(b => b.status === 'Active')?.length || 0;
 
   // 5. Data Grafik (Dummy jika kosong agar grafik tetap muncul cantik)
-  const chartData = transactions.length > 0 
+  const chartData = transactions?.length > 0 
     ? transactions.slice(0, 7).map(t => ({ name: t.date, value: t.amount }))
     : [
         { name: 'Sen', value: 0 }, { name: 'Sel', value: 0 }, 
