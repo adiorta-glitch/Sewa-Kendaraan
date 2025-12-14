@@ -1,18 +1,18 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Customer, User } from '../types';
 import { getStoredData, setStoredData, exportToCSV, processCSVImport, mergeData } from '../services/dataService';
-import { Plus, Trash2, Edit2, Phone, MapPin, X, UserCircle, Upload, Download } from 'lucide-react';
+import { Plus, Trash2, Edit2, Phone, MapPin, X, Upload, Download } from 'lucide-react';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const CustomersPage: React.FC<Props> = ({ currentUser }) => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  
+   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
@@ -22,8 +22,18 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
 
   const isSuperAdmin = currentUser.role === 'superadmin';
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setCustomers(getStoredData<Customer[]>('customers', []));
+    // Load & Sanitize
+    const rawData = getStoredData<Customer[]>('customers', []);
+    setCustomers(normalizeData(rawData));
   }, []);
 
   const openModal = (cust?: Customer) => {
@@ -50,11 +60,14 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
         address
     };
 
+    // Pastikan customers adalah array
+    const currentCustomers = normalizeData(customers);
     let updated;
+    
     if (editingCustomer) {
-        updated = customers.map(c => c.id === editingCustomer.id ? newCust : c);
+        updated = currentCustomers.map(c => c.id === editingCustomer.id ? newCust : c);
     } else {
-        updated = [...customers, newCust];
+        updated = [...currentCustomers, newCust];
     }
 
     setCustomers(updated);
@@ -64,7 +77,8 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDelete = (id: string) => {
       if(confirm('Hapus data pelanggan ini?')) {
-          const updated = customers.filter(c => c.id !== id);
+          const currentCustomers = normalizeData(customers);
+          const updated = currentCustomers.filter(c => c.id !== id);
           setCustomers(updated);
           setStoredData('customers', updated);
       }
@@ -85,6 +99,9 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
           });
       }
   };
+
+  // Safe Rendering Variable
+  const safeCustomers = normalizeData(customers);
 
   return (
     <div className="space-y-6">
@@ -120,7 +137,7 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
                   </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                  {customers.map(c => (
+                  {safeCustomers.map(c => (
                       <tr key={c.id} className="hover:bg-slate-50">
                           <td className="px-6 py-4 font-medium text-slate-900">{c.name}</td>
                           <td className="px-6 py-4 text-sm text-slate-600">
@@ -141,7 +158,7 @@ const CustomersPage: React.FC<Props> = ({ currentUser }) => {
                           </td>
                       </tr>
                   ))}
-                  {customers.length === 0 && (
+                  {safeCustomers.length === 0 && (
                       <tr><td colSpan={4} className="text-center py-8 text-slate-500">Belum ada data pelanggan.</td></tr>
                   )}
               </tbody>
