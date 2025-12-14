@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction, Booking, Car, Customer } from '../types';
 import { getStoredData } from '../services/dataService';
@@ -9,6 +8,7 @@ import { getCurrentUser } from '../services/authService';
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
 const StatisticsPage = () => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
@@ -21,38 +21,60 @@ const StatisticsPage = () => {
   const currentUser = getCurrentUser();
   const isPartner = currentUser?.role === 'partner';
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setTransactions(getStoredData<Transaction[]>('transactions', []));
-    setBookings(getStoredData<Booking[]>('bookings', []));
-    setCars(getStoredData<Car[]>('cars', []));
-    setCustomers(getStoredData<Customer[]>('customers', []));
+    // Load Data & Sanitize
+    const rawTransactions = getStoredData<Transaction[]>('transactions', []);
+    const rawBookings = getStoredData<Booking[]>('bookings', []);
+    const rawCars = getStoredData<Car[]>('cars', []);
+    const rawCustomers = getStoredData<Customer[]>('customers', []);
+
+    setTransactions(normalizeData(rawTransactions));
+    setBookings(normalizeData(rawBookings));
+    setCars(normalizeData(rawCars));
+    setCustomers(normalizeData(rawCustomers));
 
     // Default to current month
     const date = new Date();
     const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
     const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    setStartDate(firstDay.toISOString().split('T')[0]);
-    setEndDate(lastDay.toISOString().split('T')[0]);
+    // Handle timezone offset simply
+    const toISODate = (d: Date) => d.toISOString().split('T')[0];
+    
+    setStartDate(toISODate(firstDay));
+    setEndDate(toISODate(lastDay));
   }, []);
 
-  // Filter Data
+  // Filter Data Logic
   const filterDateRange = (dateStr: string) => {
       if(!startDate || !endDate) return true;
       return dateStr >= startDate && dateStr <= endDate;
   };
 
-  let filteredTransactions = transactions.filter(t => filterDateRange(t.date));
-  let filteredBookings = bookings.filter(b => filterDateRange(b.startDate.split('T')[0]));
+  // Gunakan data yang sudah dinormalisasi dari state
+  const safeTransactions = normalizeData(transactions);
+  const safeBookings = normalizeData(bookings);
+  const safeCars = normalizeData(cars);
+
+  let filteredTransactions = safeTransactions.filter(t => filterDateRange(t.date));
+  let filteredBookings = safeBookings.filter(b => filterDateRange(b.startDate.split('T')[0]));
 
   // PARTNER SPECIFIC LOGIC
-  if (isPartner && currentUser.linkedPartnerId) {
+  if (isPartner && currentUser?.linkedPartnerId) {
       // 1. Filter Transactions: Only 'Setor Mitra' related to this partner
       filteredTransactions = filteredTransactions.filter(t => 
           t.category === 'Setor Mitra' && t.relatedId === currentUser.linkedPartnerId
       );
 
       // 2. Filter Bookings: Only cars owned by this partner
-      const partnerCarIds = cars.filter(c => c.partnerId === currentUser.linkedPartnerId).map(c => c.id);
+      const partnerCarIds = safeCars.filter(c => c.partnerId === currentUser.linkedPartnerId).map(c => c.id);
       filteredBookings = filteredBookings.filter(b => partnerCarIds.includes(b.carId));
   }
 
@@ -60,36 +82,44 @@ const StatisticsPage = () => {
   // If Partner: Income = Setoran, Expense = 0 (or specific expenses if tracked)
   // If Admin: Income = Income Type, Expense = Expense Type
   const income = isPartner 
-    ? filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0) // Partner receives money
-    : filteredTransactions.filter(t => t.type === 'Income').reduce((acc, curr) => acc + curr.amount, 0);
+    ? filteredTransactions.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) // Partner receives money
+    : filteredTransactions.filter(t => t.type === 'Income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
   const expense = isPartner
     ? 0 // Usually partners don't track expense here unless system updated
-    : filteredTransactions.filter(t => t.type === 'Expense').reduce((acc, curr) => acc + curr.amount, 0);
+    : filteredTransactions.filter(t => t.type === 'Expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
     
   const profit = income - expense;
 
   // Chart Data: Histogram Income vs Expense per day
   const getDailyHistogram = () => {
+      if (!startDate || !endDate) return [];
+
       const daysMap = new Map();
       const start = new Date(startDate);
       const end = new Date(endDate);
       
+      // Loop safe date
       for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const dayStr = d.toISOString().split('T')[0];
           daysMap.set(dayStr, { name: new Date(dayStr).getDate(), Pemasukan: 0, Pengeluaran: 0, Bersih: 0 });
       }
 
       filteredTransactions.forEach(t => {
-          const dayStr = t.date;
+          // Hanya proses jika t.date valid
+          if (!t.date) return;
+          const dayStr = t.date.split('T')[0]; // Pastikan format YYYY-MM-DD
+          
           if(daysMap.has(dayStr)) {
               const current = daysMap.get(dayStr);
+              const amount = Number(t.amount) || 0;
+
               if (isPartner) {
                   // For Partner, transaction is income
-                  current.Pemasukan += t.amount;
+                  current.Pemasukan += amount;
               } else {
-                  if(t.type === 'Income') current.Pemasukan += t.amount;
-                  else current.Pengeluaran += t.amount;
+                  if(t.type === 'Income') current.Pemasukan += amount;
+                  else current.Pengeluaran += amount;
               }
           }
       });
@@ -117,7 +147,7 @@ const StatisticsPage = () => {
   const getTopFleet = () => {
       const counts: {[key: string]: number} = {};
       filteredBookings.forEach(b => {
-          const carName = cars.find(c => c.id === b.carId)?.name || 'Unknown';
+          const carName = safeCars.find(c => c.id === b.carId)?.name || 'Unknown';
           counts[carName] = (counts[carName] || 0) + 1;
       });
       return Object.entries(counts)
