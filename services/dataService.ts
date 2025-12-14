@@ -72,21 +72,47 @@ export const getStoredData = async <T extends { id: string }>(
   fallbackData: T[] | T
 ): Promise<T[] | T> => {
     
-    // Khusus untuk AppSettings (karena bukan array, tapi single object)
+    // 1. Pengaman: Pastikan fallbackData selalu siap
+    const safeFallback = fallbackData || [];
+
+    // Khusus untuk AppSettings (Single Object)
     if (collectionName === 'appSettings') {
         try {
-            const docRef = doc(db, collectionName, 'current');
             const snapshot = await getDocs(collection(db, collectionName));
             if (!snapshot.empty) {
                 return snapshot.docs[0].data() as T;
             }
-            console.warn(`[FIREBASE] Settings kosong, pakai Default.`);
-            return fallbackData as T;
+            return safeFallback as T;
         } catch (error) {
-            console.error(`[FIREBASE ERROR] Gagal load settings, pakai Default.`, error);
-            return fallbackData as T;
+            console.error(`[FIREBASE ERROR] Settings:`, error);
+            return safeFallback as T;
         }
     }
+
+    // Untuk Data List (Array)
+    try {
+        const colRef = collection(db, collectionName);
+        const snapshot = await getDocs(colRef);
+        
+        if (snapshot.empty) {
+            console.warn(`[FIREBASE] ${collectionName} kosong, pakai Mockup.`);
+            // Pastikan yang dikembalikan adalah Array
+            return Array.isArray(safeFallback) ? safeFallback : [];
+        }
+
+        const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as T[];
+        
+        // Pengaman Terakhir: Pastikan hasilnya Array
+        return Array.isArray(data) ? data : [];
+
+    } catch (error) {
+        console.error(`[FIREBASE ERROR] ${collectionName}:`, error);
+        return Array.isArray(safeFallback) ? safeFallback : [];
+    }
+};
 
     // Untuk Data List (Cars, Partners, dll)
     try {
