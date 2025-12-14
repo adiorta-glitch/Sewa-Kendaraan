@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Driver, User, Booking, Car, Transaction } from '../types';
 import { getStoredData, setStoredData, exportToCSV, processCSVImport, mergeData } from '../services/dataService';
@@ -6,10 +5,11 @@ import { generateMonthlyReportPDF } from '../services/pdfService';
 import { Plus, Trash2, Edit2, Phone, DollarSign, X, Image as ImageIcon, History, MapPin, Calendar, Clock, CheckCircle, Download, Upload, FileText } from 'lucide-react';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const DriversPage: React.FC<Props> = ({ currentUser }) => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
@@ -32,11 +32,25 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
 
   const isSuperAdmin = currentUser.role === 'superadmin';
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setDrivers(getStoredData<Driver[]>('drivers', []));
-    setBookings(getStoredData<Booking[]>('bookings', []));
-    setCars(getStoredData<Car[]>('cars', []));
-    setTransactions(getStoredData<Transaction[]>('transactions', []));
+    // Load Data & Sanitize
+    const rawDrivers = getStoredData<Driver[]>('drivers', []);
+    const rawBookings = getStoredData<Booking[]>('bookings', []);
+    const rawCars = getStoredData<Car[]>('cars', []);
+    const rawTrans = getStoredData<Transaction[]>('transactions', []);
+
+    setDrivers(normalizeData(rawDrivers));
+    setBookings(normalizeData(rawBookings));
+    setCars(normalizeData(rawCars));
+    setTransactions(normalizeData(rawTrans));
   }, []);
 
   const openModal = (driver?: Driver) => {
@@ -92,11 +106,14 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
         image: finalImage
     };
 
+    // Pastikan drivers adalah array sebelum di-map
+    const currentDrivers = normalizeData(drivers);
     let updatedDrivers;
+
     if (editingDriver) {
-        updatedDrivers = drivers.map(d => d.id === editingDriver.id ? newDriver : d);
+        updatedDrivers = currentDrivers.map(d => d.id === editingDriver.id ? newDriver : d);
     } else {
-        updatedDrivers = [...drivers, newDriver];
+        updatedDrivers = [...currentDrivers, newDriver];
     }
 
     setDrivers(updatedDrivers);
@@ -106,21 +123,28 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDelete = (id: string) => {
       if(confirm('Hapus data driver ini?')) {
-          const updated = drivers.filter(d => d.id !== id);
+          const currentDrivers = normalizeData(drivers);
+          const updated = currentDrivers.filter(d => d.id !== id);
           setDrivers(updated);
           setStoredData('drivers', updated);
       }
   };
 
-  // Get History Data
-  const driverBookings = historyDriver ? bookings.filter(b => b.driverId === historyDriver.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) : [];
+  // Get History Data (Safe Filtering)
+  const safeBookings = normalizeData(bookings);
+  const safeTransactions = normalizeData(transactions);
+
+  const driverBookings = historyDriver 
+    ? safeBookings.filter(b => b.driverId === historyDriver.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) 
+    : [];
   
-  // Update: Include 'Gaji' in expenses
-  const driverExpenses = historyDriver ? transactions.filter(t => 
-      t.type === 'Expense' && 
-      (t.relatedId === historyDriver.id || t.description.toLowerCase().includes(historyDriver.name.toLowerCase())) &&
-      (t.category === 'Reimbursement' || t.category === 'BBM' || t.category === 'Tol/Parkir' || t.category === 'Gaji')
-  ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+  const driverExpenses = historyDriver 
+    ? safeTransactions.filter(t => 
+          t.type === 'Expense' && 
+          (t.relatedId === historyDriver.id || t.description.toLowerCase().includes(historyDriver.name.toLowerCase())) &&
+          (t.category === 'Reimbursement' || t.category === 'BBM' || t.category === 'Tol/Parkir' || t.category === 'Gaji')
+      ).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) 
+    : [];
 
   const handleDownloadReport = () => {
       if (!historyDriver) return;
@@ -174,7 +198,8 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {drivers.map(driver => (
+        {/* Render Safe Drivers */}
+        {normalizeData(drivers).map(driver => (
             <div key={driver.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow p-5">
                 <div className="flex items-center gap-4 mb-4">
                     <img src={driver.image} alt={driver.name} className="w-16 h-16 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
@@ -218,8 +243,8 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
                   <div className="flex justify-between items-center mb-6">
-                     <h3 className="text-xl font-bold text-slate-800">{editingDriver ? 'Edit Driver' : 'Tambah Driver Baru'}</h3>
-                     <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                      <h3 className="text-xl font-bold text-slate-800">{editingDriver ? 'Edit Driver' : 'Tambah Driver Baru'}</h3>
+                      <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
                   </div>
                   
                   <form onSubmit={handleSave} className="space-y-6">
@@ -280,108 +305,109 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
       {/* HISTORY MODAL */}
       {isHistoryModalOpen && historyDriver && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-               <div className="bg-white rounded-xl w-full max-w-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-                    <div className="flex justify-between items-start mb-6">
-                         <div className="flex items-center gap-4">
-                            <img src={historyDriver.image} alt={historyDriver.name} className="w-14 h-14 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
-                            <div>
-                                <h3 className="font-bold text-xl text-slate-800">{historyDriver.name}</h3>
-                                <p className="text-sm text-slate-500">Detail Riwayat & Transaksi</p>
-                            </div>
-                         </div>
-                         <div className="flex gap-2">
-                            <button onClick={handleDownloadReport} className="flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-slate-900">
-                                 <FileText size={16}/> Download Laporan Bulanan
-                            </button>
-                            <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
-                         </div>
-                    </div>
+                <div className="bg-white rounded-xl w-full max-w-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+                     <div className="flex justify-between items-start mb-6">
+                          <div className="flex items-center gap-4">
+                             <img src={historyDriver.image} alt={historyDriver.name} className="w-14 h-14 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
+                             <div>
+                                 <h3 className="font-bold text-xl text-slate-800">{historyDriver.name}</h3>
+                                 <p className="text-sm text-slate-500">Detail Riwayat & Transaksi</p>
+                             </div>
+                          </div>
+                          <div className="flex gap-2">
+                             <button onClick={handleDownloadReport} className="flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-slate-900">
+                                  <FileText size={16}/> Download Laporan Bulanan
+                             </button>
+                             <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                          </div>
+                     </div>
 
-                    <div className="flex gap-2 border-b border-slate-100 mb-4">
-                        <button 
-                            onClick={() => setActiveHistoryTab('trips')}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'trips' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Riwayat Perjalanan
-                        </button>
-                        <button 
-                            onClick={() => setActiveHistoryTab('expenses')}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'expenses' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Reimbursement & Gaji
-                        </button>
-                    </div>
+                     <div className="flex gap-2 border-b border-slate-100 mb-4">
+                         <button 
+                             onClick={() => setActiveHistoryTab('trips')}
+                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'trips' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                         >
+                             Riwayat Perjalanan
+                         </button>
+                         <button 
+                             onClick={() => setActiveHistoryTab('expenses')}
+                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeHistoryTab === 'expenses' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                         >
+                             Reimbursement & Gaji
+                         </button>
+                     </div>
 
-                    <div className="min-h-[300px]">
-                        {activeHistoryTab === 'trips' && (
-                            <div className="space-y-3">
-                                {driverBookings.length === 0 ? (
-                                    <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat perjalanan.</div>
-                                ) : (
-                                    driverBookings.map(booking => {
-                                        const car = cars.find(c => c.id === booking.carId);
-                                        return (
-                                            <div key={booking.id} className="p-3 border rounded-lg bg-slate-50 flex justify-between items-center">
-                                                <div>
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-bold bg-white border px-1.5 py-0.5 rounded text-slate-700">{booking.id.slice(0,6)}</span>
-                                                        <span className="text-sm font-bold text-slate-800">{booking.customerName}</span>
-                                                    </div>
-                                                    <div className="text-xs text-slate-600 flex items-center gap-2">
-                                                        <span className="flex items-center gap-1"><Calendar size={10}/> {new Date(booking.startDate).toLocaleDateString('id-ID')}</span>
-                                                        <span>-</span>
-                                                        <span className="flex items-center gap-1"><MapPin size={10}/> {booking.destination}</span>
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 mt-1">Unit: {car?.name} ({car?.plate})</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    {/* HIDE PRICE FOR DRIVER VIEW */}
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                        {booking.status}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })
-                                )}
-                            </div>
-                        )}
+                     <div className="min-h-[300px]">
+                         {activeHistoryTab === 'trips' && (
+                             <div className="space-y-3">
+                                 {driverBookings.length === 0 ? (
+                                     <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat perjalanan.</div>
+                                 ) : (
+                                     driverBookings.map(booking => {
+                                         // safeCars sudah dinormalisasi
+                                         const car = normalizeData(cars).find(c => c.id === booking.carId);
+                                         return (
+                                             <div key={booking.id} className="p-3 border rounded-lg bg-slate-50 flex justify-between items-center">
+                                                 <div>
+                                                     <div className="flex items-center gap-2 mb-1">
+                                                         <span className="text-xs font-bold bg-white border px-1.5 py-0.5 rounded text-slate-700">{booking.id.slice(0,6)}</span>
+                                                         <span className="text-sm font-bold text-slate-800">{booking.customerName}</span>
+                                                     </div>
+                                                     <div className="text-xs text-slate-600 flex items-center gap-2">
+                                                         <span className="flex items-center gap-1"><Calendar size={10}/> {new Date(booking.startDate).toLocaleDateString('id-ID')}</span>
+                                                         <span>-</span>
+                                                         <span className="flex items-center gap-1"><MapPin size={10}/> {booking.destination}</span>
+                                                     </div>
+                                                     <div className="text-xs text-slate-500 mt-1">Unit: {car?.name} ({car?.plate})</div>
+                                                 </div>
+                                                 <div className="text-right">
+                                                     {/* HIDE PRICE FOR DRIVER VIEW */}
+                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                         {booking.status}
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                         )
+                                     })
+                                 )}
+                             </div>
+                         )}
 
-                        {activeHistoryTab === 'expenses' && (
-                            <div className="space-y-3">
-                                {driverExpenses.length === 0 ? (
-                                    <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat reimbursement/gaji.</div>
-                                ) : (
-                                    driverExpenses.map(tx => (
-                                        <div key={tx.id} className="p-3 border rounded-lg bg-white flex justify-between items-center">
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-800">{tx.description}</div>
-                                                <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
-                                                    <span>{new Date(tx.date).toLocaleDateString('id-ID')}</span>
-                                                    <span className={`px-1.5 py-0.5 bg-slate-100 rounded ${tx.category === 'Gaji' ? 'bg-green-100 text-green-700 font-bold' : ''}`}>{tx.category}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-sm font-bold text-red-600">Rp {tx.amount.toLocaleString('id-ID')}</div>
-                                                <div className="mt-1">
-                                                    {tx.status === 'Paid' ? (
-                                                        <span className="flex items-center justify-end gap-1 text-[10px] text-green-600 font-bold">
-                                                            <CheckCircle size={10}/> Sudah Dibayarkan
-                                                        </span>
-                                                    ) : (
-                                                        <span className="flex items-center justify-end gap-1 text-[10px] text-orange-500 font-bold">
-                                                            <Clock size={10}/> Ditahan
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        )}
-                    </div>
-               </div>
+                         {activeHistoryTab === 'expenses' && (
+                             <div className="space-y-3">
+                                 {driverExpenses.length === 0 ? (
+                                     <div className="text-center py-10 text-slate-500 italic">Belum ada riwayat reimbursement/gaji.</div>
+                                 ) : (
+                                     driverExpenses.map(tx => (
+                                         <div key={tx.id} className="p-3 border rounded-lg bg-white flex justify-between items-center">
+                                             <div>
+                                                 <div className="text-sm font-bold text-slate-800">{tx.description}</div>
+                                                 <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                                                     <span>{new Date(tx.date).toLocaleDateString('id-ID')}</span>
+                                                     <span className={`px-1.5 py-0.5 bg-slate-100 rounded ${tx.category === 'Gaji' ? 'bg-green-100 text-green-700 font-bold' : ''}`}>{tx.category}</span>
+                                                 </div>
+                                             </div>
+                                             <div className="text-right">
+                                                 <div className="text-sm font-bold text-red-600">Rp {tx.amount.toLocaleString('id-ID')}</div>
+                                                 <div className="mt-1">
+                                                     {tx.status === 'Paid' ? (
+                                                         <span className="flex items-center justify-end gap-1 text-[10px] text-green-600 font-bold">
+                                                             <CheckCircle size={10}/> Sudah Dibayarkan
+                                                         </span>
+                                                     ) : (
+                                                         <span className="flex items-center justify-end gap-1 text-[10px] text-orange-500 font-bold">
+                                                             <Clock size={10}/> Ditahan
+                                                         </span>
+                                                     )}
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     ))
+                                 )}
+                             </div>
+                         )}
+                     </div>
+                </div>
           </div>
       )}
     </div>
