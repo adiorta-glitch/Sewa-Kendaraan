@@ -136,3 +136,60 @@ export const setStoredData = async <T extends { id: string }>(key: string, data:
 
 // Fungsi Helper lainnya (Pricing, Availability) biarkan seperti semula/copy dari file lama Anda
 // ...
+// ==========================================
+// 3. FUNGSI HELPER TAMBAHAN (WAJIB ADA)
+// ==========================================
+
+export const checkAvailability = (
+  carId: string,
+  startDate: string,
+  endDate: string,
+  bookings: Booking[]
+): boolean => {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+
+  // Cek apakah ada booking yang bentrok di tanggal tersebut
+  const isBooked = bookings.some((booking) => {
+    if (booking.carId !== carId) return false;
+    if (booking.status === 'Cancelled' || booking.status === 'Completed') return false;
+
+    const bStart = new Date(booking.startDate).getTime();
+    const bEnd = new Date(booking.endDate).getTime();
+
+    // Logika bentrok tanggal (overlap)
+    return start < bEnd && end > bStart;
+  });
+
+  return !isBooked;
+};
+
+export const calculatePricing = (
+  car: Car,
+  rentalPackage: string,
+  duration: number,
+  highSeasons: HighSeason[],
+  startDate: string
+): number => {
+  const basePrice = car.pricing[rentalPackage] || 0;
+  
+  // Asumsi: Jika paket harian, dikali durasi. Jika paket 12 jam, dianggap 1x sewa.
+  let multiplier = duration;
+  if (rentalPackage.includes('12 Jam')) multiplier = 1; 
+  
+  let totalPrice = basePrice * multiplier;
+
+  // Cek High Season (Kenaikan Harga)
+  const dateCheck = new Date(startDate).getTime();
+  const activeSeason = highSeasons.find(hs => {
+    const s = new Date(hs.startDate).getTime();
+    const e = new Date(hs.endDate).getTime();
+    return dateCheck >= s && dateCheck <= e;
+  });
+
+  if (activeSeason) {
+    totalPrice += (activeSeason.priceIncrease * multiplier);
+  }
+
+  return totalPrice;
+};
