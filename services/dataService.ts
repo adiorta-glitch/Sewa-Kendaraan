@@ -193,3 +193,90 @@ export const calculatePricing = (
 
   return totalPrice;
 };
+// ==========================================
+// 4. FUNGSI IMPORT/EXPORT CSV (TAMBAHAN WAJIB)
+// ==========================================
+
+export const exportToCSV = (data: any[], filename: string) => {
+  if (!data || !data.length) {
+    alert("Tidak ada data untuk diekspor.");
+    return;
+  }
+
+  const separator = ',';
+  const keys = Object.keys(data[0]);
+  
+  const csvContent = [
+    keys.join(separator),
+    ...data.map(row => keys.map(k => {
+      let cell = row[k] === null || row[k] === undefined ? '' : row[k];
+      // Format tanggal jika ada
+      cell = cell instanceof Date ? cell.toISOString() : cell.toString();
+      // Bungkus dengan kutip jika ada koma di dalam teks
+      if (cell.search(/("|,|\n)/g) >= 0) {
+        cell = `"${cell.replace(/"/g, '""')}"`;
+      }
+      return cell;
+    }).join(separator))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+};
+
+export const processCSVImport = (file: File): Promise<any[]> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return resolve([]);
+      
+      const lines = text.split('\n');
+      if (lines.length < 2) return resolve([]); // Tidak ada data
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      
+      const result = lines.slice(1).filter(l => l.trim()).map(line => {
+        const values = line.split(','); 
+        const obj: any = {};
+        headers.forEach((h, i) => {
+          let val = values[i]?.trim().replace(/^"|"$/g, '');
+          // Konversi string "true"/"false" jadi boolean
+          if (val === 'true') obj[h] = true;
+          else if (val === 'false') obj[h] = false;
+          else obj[h] = val;
+        });
+        return obj;
+      });
+      resolve(result);
+    };
+    reader.onerror = (error) => reject(error);
+    reader.readAsText(file);
+  });
+};
+
+export const mergeData = (existingData: any[], newData: any[]) => {
+    // Gabungkan data: Update jika ID sama, Tambah jika ID baru
+    const dataMap = new Map(existingData.map(item => [item.id, item]));
+    
+    newData.forEach(item => {
+        if (item.id) {
+            dataMap.set(item.id, { ...dataMap.get(item.id), ...item });
+        } else {
+             // Buat ID baru jika tidak ada
+             const newId = 'imported_' + Math.random().toString(36).substr(2, 9);
+             dataMap.set(newId, { id: newId, ...item });
+        }
+    });
+    
+    return Array.from(dataMap.values());
+};
