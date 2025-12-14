@@ -1,215 +1,221 @@
-import { db } from '../services/firebaseService';
-import { collection, addDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Booking, BookingStatus, Car, PaymentStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { 
+  LayoutDashboard, Car, CalendarRange, Wallet, 
+  TrendingUp, AlertCircle, CheckCircle2, Clock 
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer, AreaChart, Area 
+} from 'recharts';
+
 import { getStoredData } from '../services/dataService';
-import { AlertCircle, CheckCircle, TrendingUp, Car as CarIcon, Clock, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Car as CarType, Booking, Transaction } from '../types';
 
 const Dashboard = () => {
+  const [cars, setCars] = useState<CarType[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [cars, setCars] = useState<Car[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
-  
-  // Calendar State
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadedBookings = getStoredData<Booking[]>('bookings', []);
-    const loadedCars = getStoredData<Car[]>('cars', []);
-    setBookings(loadedBookings);
-    setCars(loadedCars);
+    const loadDashboardData = async () => {
+      try {
+        // Ambil data dengan Fallback Array Kosong [] agar tidak crash
+        const [carsData, bookingsData, transData] = await Promise.all([
+          getStoredData<CarType>('cars', []),
+          getStoredData<Booking>('bookings', []),
+          getStoredData<Transaction>('transactions', [])
+        ]);
 
-    // Prepare chart data (Revenue last 7 days)
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split('T')[0];
-    });
+        // Pastikan yang masuk state ADALAH ARRAY (Safety Check)
+        setCars(Array.isArray(carsData) ? carsData : []);
+        setBookings(Array.isArray(bookingsData) ? bookingsData : []);
+        setTransactions(Array.isArray(transData) ? transData : []);
+      } catch (error) {
+        console.error("Gagal load dashboard:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    const data = last7Days.map(date => {
-      const revenue = loadedBookings
-        .filter(b => b.startDate.startsWith(date) && b.status !== BookingStatus.CANCELLED)
-        .reduce((sum, b) => sum + b.totalPrice, 0);
-      return {
-        name: new Date(date).toLocaleDateString('id-ID', { weekday: 'short' }),
-        revenue: revenue
-      };
-    });
-
-    setChartData(data);
+    loadDashboardData();
   }, []);
 
-  // Calendar Logic
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (year: number, month: number) => {
-    return new Date(year, month, 1).getDay();
-  };
-
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-  };
-
-  const prevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-  };
-
-  const activeBookings = bookings.filter(b => b.status === BookingStatus.ACTIVE).length;
-  const pendingPayments = bookings.filter(b => b.paymentStatus !== PaymentStatus.PAID && b.status !== BookingStatus.CANCELLED).length;
-  const availableCars = cars.length - activeBookings; // Simple approx for dashboard
-  const todayRevenue = bookings
-    .filter(b => b.startDate.startsWith(new Date().toISOString().split('T')[0]))
-    .reduce((acc, curr) => acc + curr.totalPrice, 0);
-
-  // Calendar Render Helpers
-  const daysInMonth = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
-  const firstDay = getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth());
-  const monthName = currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  // --- LOGIKA HITUNGAN (Safe Mode) ---
   
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const emptyDays = Array.from({ length: firstDay }, (_, i) => i);
+  // 1. Hitung Unit Ready
+  const readyUnits = cars.filter(c => c.status === 'Available').length;
+  const totalUnits = cars.length;
+
+  // 2. Hitung Pendapatan (Gunakan reduce dengan initial value 0 agar tidak error)
+  const totalRevenue = transactions.reduce((total, t) => {
+     return total + (Number(t.amount) || 0);
+  }, 0);
+
+  // 3. Hitung Booking Hari Ini
+  const today = new Date().toISOString().split('T')[0];
+  const todayBookings = bookings.filter(b => b.startDate.startsWith(today)).length;
+
+  // 4. Hitung Unit Sedang Jalan (Active)
+  const activeBookings = bookings.filter(b => b.status === 'Active').length;
+
+  // 5. Data Grafik (Dummy jika kosong agar grafik tetap muncul cantik)
+  const chartData = transactions.length > 0 
+    ? transactions.slice(0, 7).map(t => ({ name: t.date, value: t.amount }))
+    : [
+        { name: 'Sen', value: 0 }, { name: 'Sel', value: 0 }, 
+        { name: 'Rab', value: 0 }, { name: 'Kam', value: 0 },
+        { name: 'Jum', value: 0 }, { name: 'Sab', value: 0 }, { name: 'Min', value: 0 }
+      ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800">Dashboard</h2>
-          <p className="text-slate-500">Ringkasan aktivitas rental hari ini.</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Dashboard Overview</h1>
+          <p className="text-slate-500 dark:text-slate-400">Ringkasan performa bisnis rental Anda.</p>
         </div>
-        <Link to="/booking" className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium transition-colors inline-flex items-center gap-2">
-          <Clock size={18} /> Buat Booking Baru
-        </Link>
+        <button className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+          <CalendarRange size={18} />
+          <span>Buat Booking</span>
+        </button>
       </div>
 
-      {/* Stats Cards - Updated for Mobile 2 Cols (1 baris 2 kotak) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-blue-500">
-          <div className="flex items-center justify-between mb-2 md:mb-4">
-            <div className="p-1.5 md:p-2 bg-blue-50 text-blue-600 rounded-lg"><CarIcon className="w-5 h-5 md:w-6 md:h-6" /></div>
-            <span className="text-[10px] md:text-xs font-semibold text-slate-400 uppercase text-right">Unit Ready</span>
+      {/* STATS CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Unit Ready */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Unit Ready</p>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{readyUnits} <span className="text-sm text-slate-400 font-normal">/ {totalUnits}</span></h3>
+            </div>
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+              <Car size={24} />
+            </div>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-slate-800">{availableCars}/{cars.length}</p>
-          <p className="text-[10px] md:text-sm text-slate-500 mt-1 truncate">Mobil tersedia hari ini</p>
+          <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+             <span className="text-green-500 flex items-center font-medium">
+               <CheckCircle2 size={12} className="mr-1" /> Siap Jalan
+             </span>
+          </div>
         </div>
 
-        <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-green-500">
-          <div className="flex items-center justify-between mb-2 md:mb-4">
-            <div className="p-1.5 md:p-2 bg-green-50 text-green-600 rounded-lg"><TrendingUp className="w-5 h-5 md:w-6 md:h-6" /></div>
-            <span className="text-[10px] md:text-xs font-semibold text-slate-400 uppercase text-right">Pendapatan</span>
+        {/* Card 2: Pendapatan */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Pendapatan</p>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white">
+                Rp {totalRevenue.toLocaleString('id-ID')}
+              </h3>
+            </div>
+            <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 dark:text-green-400">
+              <Wallet size={24} />
+            </div>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-slate-800">Rp {(todayRevenue / 1000).toFixed(0)}k</p>
-          <p className="text-[10px] md:text-sm text-slate-500 mt-1 truncate">Booking dibuat hari ini</p>
+          <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+             <span className="text-green-500 flex items-center font-medium">
+               <TrendingUp size={12} className="mr-1" /> +0%
+             </span>
+             <span>bulan ini</span>
+          </div>
         </div>
 
-        <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-purple-500">
-          <div className="flex items-center justify-between mb-2 md:mb-4">
-            <div className="p-1.5 md:p-2 bg-purple-50 text-purple-600 rounded-lg"><CheckCircle className="w-5 h-5 md:w-6 md:h-6" /></div>
-            <span className="text-[10px] md:text-xs font-semibold text-slate-400 uppercase text-right">Sedang Jalan</span>
+        {/* Card 3: Booking Hari Ini */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Booking Baru</p>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{todayBookings}</h3>
+            </div>
+            <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-600 dark:text-purple-400">
+              <CalendarRange size={24} />
+            </div>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-slate-800">{activeBookings}</p>
-          <p className="text-[10px] md:text-sm text-slate-500 mt-1 truncate">Unit sedang disewa</p>
+          <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+             <span className="text-purple-500 font-medium">Hari ini</span>
+          </div>
         </div>
 
-        <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-red-500">
-          <div className="flex items-center justify-between mb-2 md:mb-4">
-            <div className="p-1.5 md:p-2 bg-red-50 text-red-600 rounded-lg"><AlertCircle className="w-5 h-5 md:w-6 md:h-6" /></div>
-            <span className="text-[10px] md:text-xs font-semibold text-slate-400 uppercase text-right">Belum Lunas</span>
+        {/* Card 4: Sedang Jalan */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sedang Jalan</p>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{activeBookings}</h3>
+            </div>
+            <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400">
+              <Clock size={24} />
+            </div>
           </div>
-          <p className="text-2xl md:text-3xl font-bold text-slate-800">{pendingPayments}</p>
-          <p className="text-[10px] md:text-sm text-slate-500 mt-1 truncate">Menunggu pembayaran</p>
+          <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+             <span className="text-orange-500 font-medium">Unit di luar</span>
+          </div>
         </div>
       </div>
 
-      {/* Calendar View */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <div className="flex items-center justify-between mb-6">
-           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><CalendarIcon size={20} /> Kalender Booking</h3>
-           <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-lg">
-              <button onClick={prevMonth} className="p-1 hover:bg-slate-200 rounded"><ChevronLeft size={20} /></button>
-              <span className="font-semibold text-sm min-w-[120px] text-center">{monthName}</span>
-              <button onClick={nextMonth} className="p-1 hover:bg-slate-200 rounded"><ChevronRight size={20} /></button>
-           </div>
+      {/* CHARTS SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Chart */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-6">Analisis Pendapatan</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#DC2626" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} tickFormatter={(value) => `Rp${value/1000}k`} />
+                <Tooltip 
+                  contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                  formatter={(value: number) => [`Rp ${value.toLocaleString()}`, 'Pendapatan']}
+                />
+                <Area type="monotone" dataKey="value" stroke="#DC2626" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 md:gap-2">
-            {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(d => (
-                <div key={d} className="text-center text-xs font-bold text-slate-400 py-2 uppercase">{d}</div>
-            ))}
-            
-            {emptyDays.map(d => <div key={`empty-${d}`} className="h-24 md:h-32 bg-slate-50/50 border border-slate-100 rounded-lg"></div>)}
-
-            {daysArray.map(day => {
-                const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                // Find bookings for this day
-                const dayBookings = bookings.filter(b => {
-                    const bStart = b.startDate.split('T')[0];
-                    const bEnd = b.endDate.split('T')[0];
-                    return dateStr >= bStart && dateStr <= bEnd && b.status !== 'Cancelled';
-                });
-
-                return (
-                    <div key={day} className="h-24 md:h-32 bg-white border border-slate-200 rounded-lg p-1 md:p-2 overflow-hidden hover:border-indigo-300 transition-colors relative">
-                        <span className={`text-sm font-semibold ${dayBookings.length > 0 ? 'text-indigo-600' : 'text-slate-700'}`}>{day}</span>
-                        <div className="mt-1 space-y-1 overflow-y-auto max-h-[calc(100%-24px)] custom-scrollbar">
-                            {dayBookings.map(b => (
-                                <div key={b.id} className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 truncate" title={`${b.customerName} - ${cars.find(c=>c.id===b.carId)?.name}`}>
-                                    {cars.find(c=>c.id===b.carId)?.name.split(' ')[0]}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-      </div>
-      {/* --- TOMBOL TES KONEKSI --- */}
-<div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
-  <h3 className="font-bold text-yellow-800 mb-2">Tes Koneksi Database</h3>
-  <button 
-    onClick={async () => {
-      try {
-        alert("Mencoba mengirim data ke Firebase...");
-        const docRef = await addDoc(collection(db, "tes_koneksi"), {
-          pesan: "Halo Firebase!",
-          waktu: new Date().toString()
-        });
-        alert("BERHASIL! ID Dokumen: " + docRef.id + "\n\nCek Firebase Console sekarang, harusnya ada koleksi 'tes_koneksi'.");
-      } catch (e: any) {
-        alert("GAGAL KONEKSI:\n" + e.message);
-      }
-    }}
-    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-  >
-    Uji Coba Tulis Data
-  </button>
-</div>
-{/* ------------------------- */}
-      {/* Revenue Chart */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h3 className="font-bold text-lg text-slate-800 mb-6">Pendapatan 7 Hari Terakhir</h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#DC2626" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} tickFormatter={(value) => `Rp${value/1000}k`} />
-              <Tooltip 
-                contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
-                formatter={(value: number) => [`Rp ${value.toLocaleString('id-ID')}`, 'Pendapatan']}
-              />
-              <Area type="monotone" dataKey="revenue" stroke="#DC2626" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={3} />
-            </AreaChart>
-          </ResponsiveContainer>
+        {/* Side Widget (Unit Status) */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-4">Status Armada</h3>
+          <div className="space-y-4">
+             {cars.slice(0, 5).map((car) => (
+               <div key={car.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                 <div className="w-12 h-12 rounded-lg bg-slate-200 overflow-hidden">
+                    <img src={car.image} alt={car.name} className="w-full h-full object-cover" />
+                 </div>
+                 <div className="flex-1">
+                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">{car.name}</h4>
+                    <p className="text-xs text-slate-500">{car.plate}</p>
+                 </div>
+                 <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                   car.status === 'Available' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                   car.status === 'Rented' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                   'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                 }`}>
+                   {car.status}
+                 </span>
+               </div>
+             ))}
+             {cars.length === 0 && (
+               <p className="text-center text-slate-400 text-sm py-4">Belum ada data unit.</p>
+             )}
+          </div>
         </div>
       </div>
     </div>
