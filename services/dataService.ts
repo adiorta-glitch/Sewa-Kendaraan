@@ -5,7 +5,6 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 // ==========================================
 // 1. DATA MOCKUP (CADANGAN/DEFAULT)
 // ==========================================
-// Data ini akan dipakai jika Firebase kosong atau error
 
 export const INITIAL_PARTNERS: Partner[] = [
   { id: 'p1', name: 'Budi Santoso', phone: '08123456789', splitPercentage: 70, image: 'https://i.pravatar.cc/150?u=p1' },
@@ -63,19 +62,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 // ==========================================
-// 2. FUNGSI LOGIKA HYBRID (FIREBASE + MOCK)
+// 2. FUNGSI LOGIKA HYBRID (PERBAIKAN UTAMA)
 // ==========================================
 
-// Fungsi Inti: Mengambil data dengan Fallback
 export const getStoredData = async <T extends { id: string }>(
   collectionName: string, 
   fallbackData: T[] | T
 ): Promise<T[] | T> => {
     
-    // 1. Pengaman: Pastikan fallbackData selalu siap
+    // Pastikan fallbackData tidak pernah undefined/null
     const safeFallback = fallbackData || [];
 
-    // Khusus untuk AppSettings (Single Object)
+    // --- KASUS 1: SETTING APLIKASI (Single Object) ---
     if (collectionName === 'appSettings') {
         try {
             const snapshot = await getDocs(collection(db, collectionName));
@@ -89,14 +87,14 @@ export const getStoredData = async <T extends { id: string }>(
         }
     }
 
-    // Untuk Data List (Array)
+    // --- KASUS 2: DATA LIST (Array) ---
     try {
         const colRef = collection(db, collectionName);
         const snapshot = await getDocs(colRef);
         
+        // Jika kosong, kembalikan Array kosong/fallback (JANGAN NULL)
         if (snapshot.empty) {
             console.warn(`[FIREBASE] ${collectionName} kosong, pakai Mockup.`);
-            // Pastikan yang dikembalikan adalah Array
             return Array.isArray(safeFallback) ? safeFallback : [];
         }
 
@@ -105,42 +103,16 @@ export const getStoredData = async <T extends { id: string }>(
             ...doc.data()
         })) as T[];
         
-        // Pengaman Terakhir: Pastikan hasilnya Array
+        // PENGAMAN: Pastikan output selalu Array
         return Array.isArray(data) ? data : [];
 
     } catch (error) {
         console.error(`[FIREBASE ERROR] ${collectionName}:`, error);
+        // Jika error, kembalikan Array fallback
         return Array.isArray(safeFallback) ? safeFallback : [];
     }
 };
 
-    // Untuk Data List (Cars, Partners, dll)
-    try {
-        const colRef = collection(db, collectionName);
-        const snapshot = await getDocs(colRef);
-        
-        // Jika Firebase kosong, kembalikan Mockup Data
-        if (snapshot.empty) {
-            console.warn(`[FIREBASE] Koleksi ${collectionName} kosong, menggunakan Mockup Data.`);
-            return fallbackData as T[];
-        }
-
-        // Jika ada data, kembalikan data dari Firebase
-        const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as T[];
-        
-        return data;
-
-    } catch (error) {
-        console.error(`[FIREBASE ERROR] Gagal koneksi ke ${collectionName}, menggunakan Mockup Data.`, error);
-        // Jika error (misal internet mati atau API key salah), tetap jalan pakai Mockup
-        return fallbackData as T[];
-    }
-};
-
-// Fungsi Menyimpan Data (Tetap mencoba simpan ke Firebase)
 export const setStoredData = async <T extends { id: string }>(key: string, data: T[] | T) => {
     try {
         if (Array.isArray(data)) {
@@ -155,13 +127,10 @@ export const setStoredData = async <T extends { id: string }>(key: string, data:
         console.log(`[FIREBASE] Sukses menyimpan ${key}`);
     } catch (error) {
         console.error(`[FIREBASE ERROR] Gagal menyimpan ${key}`, error);
-        // Fallback: Simpan ke LocalStorage agar user tidak merasa data hilang sesaat
         localStorage.setItem(key, JSON.stringify(data));
     }
 };
 
-// Fungsi Helper lainnya (Pricing, Availability) biarkan seperti semula/copy dari file lama Anda
-// ...
 // ==========================================
 // 3. FUNGSI HELPER TAMBAHAN (WAJIB ADA)
 // ==========================================
@@ -175,7 +144,9 @@ export const checkAvailability = (
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
 
-  // Cek apakah ada booking yang bentrok di tanggal tersebut
+  // Pengaman jika bookings null/undefined (Sangat penting agar tidak crash)
+  if (!bookings || !Array.isArray(bookings)) return true;
+
   const isBooked = bookings.some((booking) => {
     if (booking.carId !== carId) return false;
     if (booking.status === 'Cancelled' || booking.status === 'Completed') return false;
@@ -183,7 +154,6 @@ export const checkAvailability = (
     const bStart = new Date(booking.startDate).getTime();
     const bEnd = new Date(booking.endDate).getTime();
 
-    // Logika bentrok tanggal (overlap)
     return start < bEnd && end > bStart;
   });
 
@@ -197,17 +167,21 @@ export const calculatePricing = (
   highSeasons: HighSeason[],
   startDate: string
 ): number => {
+  if (!car || !car.pricing) return 0; // Pengaman crash
+
   const basePrice = car.pricing[rentalPackage] || 0;
   
-  // Asumsi: Jika paket harian, dikali durasi. Jika paket 12 jam, dianggap 1x sewa.
   let multiplier = duration;
   if (rentalPackage.includes('12 Jam')) multiplier = 1; 
   
   let totalPrice = basePrice * multiplier;
 
-  // Cek High Season (Kenaikan Harga)
   const dateCheck = new Date(startDate).getTime();
-  const activeSeason = highSeasons.find(hs => {
+  
+  // Pengaman jika highSeasons null/undefined
+  const seasons = Array.isArray(highSeasons) ? highSeasons : [];
+
+  const activeSeason = seasons.find(hs => {
     const s = new Date(hs.startDate).getTime();
     const e = new Date(hs.endDate).getTime();
     return dateCheck >= s && dateCheck <= e;
@@ -219,8 +193,9 @@ export const calculatePricing = (
 
   return totalPrice;
 };
+
 // ==========================================
-// 4. FUNGSI IMPORT/EXPORT CSV (TAMBAHAN WAJIB)
+// 4. FUNGSI IMPORT/EXPORT CSV
 // ==========================================
 
 export const exportToCSV = (data: any[], filename: string) => {
@@ -236,9 +211,7 @@ export const exportToCSV = (data: any[], filename: string) => {
     keys.join(separator),
     ...data.map(row => keys.map(k => {
       let cell = row[k] === null || row[k] === undefined ? '' : row[k];
-      // Format tanggal jika ada
       cell = cell instanceof Date ? cell.toISOString() : cell.toString();
-      // Bungkus dengan kutip jika ada koma di dalam teks
       if (cell.search(/("|,|\n)/g) >= 0) {
         cell = `"${cell.replace(/"/g, '""')}"`;
       }
@@ -267,7 +240,7 @@ export const processCSVImport = (file: File): Promise<any[]> => {
       if (!text) return resolve([]);
       
       const lines = text.split('\n');
-      if (lines.length < 2) return resolve([]); // Tidak ada data
+      if (lines.length < 2) return resolve([]); 
 
       const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
       
@@ -276,7 +249,6 @@ export const processCSVImport = (file: File): Promise<any[]> => {
         const obj: any = {};
         headers.forEach((h, i) => {
           let val = values[i]?.trim().replace(/^"|"$/g, '');
-          // Konversi string "true"/"false" jadi boolean
           if (val === 'true') obj[h] = true;
           else if (val === 'false') obj[h] = false;
           else obj[h] = val;
@@ -291,14 +263,12 @@ export const processCSVImport = (file: File): Promise<any[]> => {
 };
 
 export const mergeData = (existingData: any[], newData: any[]) => {
-    // Gabungkan data: Update jika ID sama, Tambah jika ID baru
     const dataMap = new Map(existingData.map(item => [item.id, item]));
     
     newData.forEach(item => {
         if (item.id) {
             dataMap.set(item.id, { ...dataMap.get(item.id), ...item });
         } else {
-             // Buat ID baru jika tidak ada
              const newId = 'imported_' + Math.random().toString(36).substr(2, 9);
              dataMap.set(newId, { id: newId, ...item });
         }
