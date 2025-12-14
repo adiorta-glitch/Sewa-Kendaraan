@@ -8,38 +8,39 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
 
+// Pastikan path import ini sesuai dengan struktur folder Anda
 import { getStoredData } from '../services/dataService';
-// Hapus import types jika file Anda .jsx (bukan .tsx), 
-// tapi jika .tsx biarkan baris di bawah ini:
+// Import tipe data (opsional, jika menggunakan TypeScript)
 import { Car as CarType, Booking, Transaction } from '../types';
 
 const Dashboard = () => {
-  // Inisialisasi state dengan Array Kosong
-  const [cars, setCars] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  // --- 1. STATE INITIALIZATION (SAFE) ---
+  // Kita mulai dengan array kosong [] agar tidak error saat render pertama
+  const [cars, setCars] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- FUNGSI PEMBANTU (Helper) ---
-  // Fungsi ini mengubah Object Firebase menjadi Array agar bisa di-filter
-  const normalizeData = (data) => {
-    if (!data) return []; // Jika null/undefined, kembalikan array kosong
-    if (Array.isArray(data)) return data; // Jika sudah array, biarkan
-    if (typeof data === 'object') return Object.values(data); // JIKA OBJECT, UBAH JADI ARRAY
-    return []; // Fallback terakhir
+  // --- 2. HELPER: NORMALIZE DATA ---
+  // Fungsi Sakti: Mengubah apapun yang keluar dari Firebase menjadi Array
+  const normalizeData = (data: any) => {
+    if (!data) return []; // Jika kosong/null -> kembalikan array kosong
+    if (Array.isArray(data)) return data; // Jika sudah array -> biarkan
+    if (typeof data === 'object') return Object.values(data); // Jika object -> ubah jadi array
+    return []; // Jaga-jaga
   };
 
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
+        // Ambil semua data secara paralel
         const [carsData, bookingsData, transData] = await Promise.all([
           getStoredData('cars', []),
           getStoredData('bookings', []),
           getStoredData('transactions', [])
         ]);
 
-        // GUNAKAN normalizeData DI SINI
-        // Ini memastikan 'cars', 'bookings', dll SELALU berupa Array
+        // Simpan ke state setelah dibersihkan oleh normalizeData
         setCars(normalizeData(carsData));
         setBookings(normalizeData(bookingsData));
         setTransactions(normalizeData(transData));
@@ -54,34 +55,35 @@ const Dashboard = () => {
     loadDashboardData();
   }, []);
 
-  // --- LOGIKA HITUNGAN ---
+  // --- 3. LOGIKA HITUNGAN (AMAN) ---
   
-  // 1. Hitung Unit Ready
-  // Karena sudah dinormalisasi jadi array, kita aman menggunakan .filter
+  // Hitung Unit Ready
+  // Karena sudah pakai normalizeData, .filter tidak akan error lagi
   const readyUnits = cars.filter(c => c.status === 'Available').length;
   const totalUnits = cars.length;
 
-  // 2. Hitung Pendapatan
+  // Hitung Pendapatan
   const totalRevenue = transactions.reduce((total, t) => {
       return total + (Number(t.amount) || 0);
   }, 0);
 
-  // 3. Hitung Booking Hari Ini
+  // Hitung Booking Hari Ini
   const today = new Date().toISOString().split('T')[0];
   const todayBookings = bookings.filter(b => b && b.startDate && b.startDate.startsWith(today)).length;
 
-  // 4. Hitung Unit Sedang Jalan
+  // Hitung Unit Sedang Jalan
   const activeBookings = bookings.filter(b => b.status === 'Active').length;
 
-  // 5. Data Grafik
+  // Siapkan Data Grafik
   const chartData = transactions.length > 0 
-    ? transactions.slice(0, 7).map(t => ({ name: t.date, value: t.amount }))
+    ? transactions.slice(0, 7).map(t => ({ name: t.date || 'N/A', value: Number(t.amount) || 0 }))
     : [
         { name: 'Sen', value: 0 }, { name: 'Sel', value: 0 }, 
         { name: 'Rab', value: 0 }, { name: 'Kam', value: 0 },
         { name: 'Jum', value: 0 }, { name: 'Sab', value: 0 }, { name: 'Min', value: 0 }
       ];
 
+  // --- 4. TAMPILAN LOADING ---
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -90,6 +92,7 @@ const Dashboard = () => {
     );
   }
 
+  // --- 5. TAMPILAN UTAMA ---
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -196,7 +199,7 @@ const Dashboard = () => {
                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} tickFormatter={(value) => `Rp${value/1000}k`} />
                 <Tooltip 
                   contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                  formatter={(value) => [`Rp ${value.toLocaleString()}`, 'Pendapatan']}
+                  formatter={(value: number) => [`Rp ${value.toLocaleString()}`, 'Pendapatan']}
                 />
                 <Area type="monotone" dataKey="value" stroke="#DC2626" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
               </AreaChart>
@@ -208,10 +211,16 @@ const Dashboard = () => {
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <h3 className="font-bold text-slate-800 dark:text-white mb-4">Status Armada</h3>
           <div className="space-y-4">
+             {/* Gunakan cars yang sudah dinormalisasi */}
              {cars.slice(0, 5).map((car) => (
-               <div key={car.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+               <div key={car.id || Math.random()} className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                  <div className="w-12 h-12 rounded-lg bg-slate-200 overflow-hidden">
-                    <img src={car.image} alt={car.name} className="w-full h-full object-cover" />
+                    {/* Tambahkan fallback image jika car.image kosong */}
+                    <img 
+                      src={car.image || 'https://via.placeholder.com/100?text=Car'} 
+                      alt={car.name} 
+                      className="w-full h-full object-cover" 
+                    />
                  </div>
                  <div className="flex-1">
                     <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">{car.name}</h4>
