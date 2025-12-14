@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { getStoredData, setStoredData, checkAvailability, calculatePricing, DEFAULT_SETTINGS } from '../services/dataService';
 import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist } from '../types';
@@ -6,33 +5,33 @@ import { generateInvoicePDF, generateWhatsAppLink } from '../services/pdfService
 import { Search, Plus, Trash2, MessageCircle, AlertTriangle, Calendar, User as UserIcon, Zap, CheckCircle, MapPin, Shield, Image as ImageIcon, X, FileText, ClipboardCheck, Fuel, Gauge, Car as CarIcon, Edit, Edit2, FileSpreadsheet, ChevronDown, Filter, Info } from 'lucide-react';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
-  // Data State
+  // --- STATE DATA (Safe Init) ---
   const [cars, setCars] = useState<Car[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [highSeasons, setHighSeasons] = useState<HighSeason[]>([]);
 
-  // Filtered Data State (Available Units)
+  // Filtered Data State
   const [availableCars, setAvailableCars] = useState<Car[]>([]);
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   
-  // Filter State (List & Export)
+  // Filter State
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
 
-  // Form State (Create/Edit Booking)
+  // Form State
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
 
   const [selectedCarId, setSelectedCarId] = useState<string>('');
-  const [isCarDropdownOpen, setIsCarDropdownOpen] = useState(false); // New state for custom dropdown
+  const [isCarDropdownOpen, setIsCarDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
@@ -44,7 +43,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('08:00');
   
-  // Overtime / Return
   const [actualReturnDate, setActualReturnDate] = useState('');
   const [actualReturnTime, setActualReturnTime] = useState('');
   const [overtimeFee, setOvertimeFee] = useState<number>(0);
@@ -55,10 +53,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [packageType, setPackageType] = useState<string>('');
   const [deliveryFee, setDeliveryFee] = useState<number>(0);
   
-  // New Fields
   const [destination, setDestination] = useState<'Dalam Kota' | 'Luar Kota'>('Dalam Kota');
   
-  // Deposit
   const [securityDepositType, setSecurityDepositType] = useState<'Uang' | 'Barang'>('Uang');
   const [securityDepositValue, setSecurityDepositValue] = useState<number>(0);
   const [securityDepositDescription, setSecurityDepositDescription] = useState('');
@@ -98,16 +94,34 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
 
   const isSuperAdmin = currentUser.role === 'superadmin';
 
+  // --- 1. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setCars(getStoredData<Car[]>('cars', []));
-    setBookings(getStoredData<Booking[]>('bookings', []));
-    setDrivers(getStoredData<Driver[]>('drivers', []));
-    setHighSeasons(getStoredData<HighSeason[]>('highSeasons', []));
-    setCustomers(getStoredData<Customer[]>('customers', []));
+    // Load Data & Sanitize
+    const rawCars = getStoredData<Car[]>('cars', []);
+    const rawBookings = getStoredData<Booking[]>('bookings', []);
+    const rawDrivers = getStoredData<Driver[]>('drivers', []);
+    const rawSeasons = getStoredData<HighSeason[]>('highSeasons', []);
+    const rawCust = getStoredData<Customer[]>('customers', []);
+    
+    setCars(normalizeData(rawCars));
+    setBookings(normalizeData(rawBookings));
+    setDrivers(normalizeData(rawDrivers));
+    setHighSeasons(normalizeData(rawSeasons));
+    setCustomers(normalizeData(rawCust));
+
     const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
     setSettings(loadedSettings);
-    if(loadedSettings.rentalPackages.length > 0) {
-        setPackageType(loadedSettings.rentalPackages[0]);
+    // Safe check for rentalPackages
+    const safePackages = normalizeData(loadedSettings.rentalPackages);
+    if(safePackages.length > 0) {
+        setPackageType(safePackages[0]);
     }
 
     // Click outside handler for dropdown
@@ -123,7 +137,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   // Handle Customer Selection
   useEffect(() => {
       if (selectedCustomerId) {
-          const cust = customers.find(c => c.id === selectedCustomerId);
+          const safeCustomers = normalizeData(customers);
+          const cust = safeCustomers.find(c => c.id === selectedCustomerId);
           if (cust) {
               setCustomerName(cust.name);
               setCustomerPhone(cust.phone);
@@ -168,12 +183,15 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
     }
   };
 
-  // Logic: Filter Available Cars & Drivers
+  // Logic: Filter Available Cars & Drivers (SAFE)
   useEffect(() => {
+      const safeCars = normalizeData(cars);
+      const safeDrivers = normalizeData(drivers);
+      const safeBookings = normalizeData(bookings);
+
       if (!startDate || !endDate) {
-          // If no dates selected, show all (or logic could be to show none)
-          setAvailableCars(cars);
-          setAvailableDrivers(drivers);
+          setAvailableCars(safeCars);
+          setAvailableDrivers(safeDrivers);
           return;
       }
 
@@ -181,19 +199,19 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       const end = new Date(`${endDate}T${endTime}`);
 
       if (end <= start) {
-          setAvailableCars(cars);
-          setAvailableDrivers(drivers);
+          setAvailableCars(safeCars);
+          setAvailableDrivers(safeDrivers);
           return;
       }
 
       // Filter Cars
-      const filteredCars = cars.filter(car => {
-          return checkAvailability(bookings, car.id, start, end, 'car', editingBookingId || undefined);
+      const filteredCars = safeCars.filter(car => {
+          return checkAvailability(safeBookings, car.id, start, end, 'car', editingBookingId || undefined);
       });
 
       // Filter Drivers
-      const filteredDrivers = drivers.filter(driver => {
-          return checkAvailability(bookings, driver.id, start, end, 'driver', editingBookingId || undefined);
+      const filteredDrivers = safeDrivers.filter(driver => {
+          return checkAvailability(safeBookings, driver.id, start, end, 'driver', editingBookingId || undefined);
       });
 
       setAvailableCars(filteredCars);
@@ -202,23 +220,28 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   }, [startDate, startTime, endDate, endTime, cars, drivers, bookings, editingBookingId]);
 
 
-  // Logic: Pricing & Validation
+  // Logic: Pricing & Validation (SAFE)
   useEffect(() => {
     if (!startDate || !endDate) return;
 
     const start = new Date(`${startDate}T${startTime}`);
     const end = new Date(`${endDate}T${endTime}`);
     
-    // Check Availability (skip if editing same booking)
+    // Ensure data is array
+    const safeBookings = normalizeData(bookings);
+    const safeCars = normalizeData(cars);
+    const safeDrivers = normalizeData(drivers);
+    
+    // Check Availability
     if (selectedCarId) {
-      const isCarAvailable = checkAvailability(bookings, selectedCarId, start, end, 'car', editingBookingId || undefined);
+      const isCarAvailable = checkAvailability(safeBookings, selectedCarId, start, end, 'car', editingBookingId || undefined);
       setCarError(isCarAvailable ? '' : 'Mobil ini sudah dibooking pada tanggal tersebut (Bentrok).');
     } else {
         setCarError('');
     }
 
     if (useDriver && selectedDriverId) {
-        const isDriverAvailable = checkAvailability(bookings, selectedDriverId, start, end, 'driver', editingBookingId || undefined);
+        const isDriverAvailable = checkAvailability(safeBookings, selectedDriverId, start, end, 'driver', editingBookingId || undefined);
         setDriverError(isDriverAvailable ? '' : 'Driver sedang bertugas di jadwal ini!');
     } else {
         setDriverError('');
@@ -226,12 +249,11 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
 
     // Pricing
     if (selectedCarId && start < end) {
-        const car = cars.find(c => c.id === selectedCarId);
-        const driver = useDriver ? drivers.find(d => d.id === selectedDriverId) : undefined;
+        const car = safeCars.find(c => c.id === selectedCarId);
+        const driver = useDriver ? safeDrivers.find(d => d.id === selectedDriverId) : undefined;
         
         if (car) {
             const calculated = calculatePricing(car, driver, start, end, packageType, highSeasons, deliveryFee);
-            // Add Overtime Fee
             const totalWithOvertime = calculated.totalPrice + (overtimeFee || 0);
             
             setPricing({
@@ -243,7 +265,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
     }
   }, [selectedCarId, selectedDriverId, useDriver, startDate, startTime, endDate, endTime, packageType, deliveryFee, bookings, cars, drivers, highSeasons, editingBookingId, overtimeFee]);
 
-  // Auto-Update Amount Paid if Payment Status is Lunas
+  // Auto-Update Amount Paid
   useEffect(() => {
       if (paymentStatus === PaymentStatus.PAID) {
           setAmountPaid(pricing.totalPrice.toString());
@@ -254,7 +276,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       setEditingBookingId(booking.id);
       setActiveTab('create');
       
-      // Populate Data
       const start = new Date(booking.startDate);
       const end = new Date(booking.endDate);
       
@@ -311,11 +332,14 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         actReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}`).toISOString();
     }
 
-    // Auto status COMPLETED if actual return date is set
     let finalStatus = status;
     if (actReturnIso) {
         finalStatus = BookingStatus.COMPLETED;
     }
+
+    // Safe Find
+    const safeBookings = normalizeData(bookings);
+    const safeCars = normalizeData(cars);
 
     const newBooking: Booking = {
       id: editingBookingId || Date.now().toString(),
@@ -335,7 +359,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       securityDepositDescription,
       securityDepositImage: depositImage || undefined,
 
-      // Financials
       basePrice: pricing.basePrice,
       driverFee: pricing.driverFee,
       highSeasonFee: pricing.highSeasonFee,
@@ -347,12 +370,11 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       status: finalStatus,
       paymentStatus,
       notes,
-      // Preserve checklist if editing
-      checklist: editingBookingId ? bookings.find(b => b.id === editingBookingId)?.checklist : undefined,
-      createdAt: editingBookingId ? (bookings.find(b => b.id === editingBookingId)?.createdAt || Date.now()) : Date.now()
+      checklist: editingBookingId ? safeBookings.find(b => b.id === editingBookingId)?.checklist : undefined,
+      createdAt: editingBookingId ? (safeBookings.find(b => b.id === editingBookingId)?.createdAt || Date.now()) : Date.now()
     };
 
-    // Transaction Log Logic (Simplified)
+    // Transaction Logic
     if (newBooking.amountPaid > 0) {
         if (!editingBookingId) {
             const transaction: Transaction = {
@@ -361,19 +383,20 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                 amount: newBooking.amountPaid,
                 type: 'Income',
                 category: 'Rental Payment',
-                description: `Pembayaran ${newBooking.customerName} - ${cars.find(c => c.id === selectedCarId)?.name}`,
+                description: `Pembayaran ${newBooking.customerName} - ${safeCars.find(c => c.id === selectedCarId)?.name}`,
                 bookingId: newBooking.id
             };
-            const currentTx = getStoredData<Transaction[]>('transactions', []);
+            // Load existing transactions safely
+            const currentTx = normalizeData(getStoredData<Transaction[]>('transactions', []));
             setStoredData('transactions', [transaction, ...currentTx]);
         }
     }
 
     let updatedBookings;
     if (editingBookingId) {
-        updatedBookings = bookings.map(b => b.id === editingBookingId ? newBooking : b);
+        updatedBookings = safeBookings.map(b => b.id === editingBookingId ? newBooking : b);
     } else {
-        updatedBookings = [newBooking, ...bookings];
+        updatedBookings = [newBooking, ...safeBookings];
     }
 
     setBookings(updatedBookings);
@@ -411,18 +434,22 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDelete = (id: string) => {
       if(confirm('Hapus booking ini?')) {
-          const updated = bookings.filter(b => b.id !== id);
+          const safeBookings = normalizeData(bookings);
+          const updated = safeBookings.filter(b => b.id !== id);
           setBookings(updated);
           setStoredData('bookings', updated);
       }
   };
 
-  // --- EXPORT CSV LOGIC ---
+  // --- EXPORT CSV LOGIC (SAFE) ---
   const handleExportCSV = () => {
-      // 1. Apply Filter Logic (Same as List View)
-      let dataToExport = bookings;
+      const safeBookings = normalizeData(bookings);
+      const safeCars = normalizeData(cars);
+      const safeDrivers = normalizeData(drivers);
+
+      let dataToExport = safeBookings;
       if (filterStartDate || filterEndDate) {
-          dataToExport = bookings.filter(b => {
+          dataToExport = safeBookings.filter(b => {
              const bDate = b.startDate.split('T')[0];
              const start = filterStartDate || '0000-00-00';
              const end = filterEndDate || '9999-12-31';
@@ -452,8 +479,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       ];
 
       const rows = dataToExport.map(b => {
-          const car = cars.find(c => c.id === b.carId);
-          const driver = drivers.find(d => d.id === b.driverId);
+          const car = safeCars.find(c => c.id === b.carId);
+          const driver = safeDrivers.find(d => d.id === b.driverId);
           
           return [
               b.id.slice(0, 8),
@@ -484,7 +511,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       document.body.removeChild(link);
   };
 
-  // --- CHECKLIST LOGIC ---
+  // --- CHECKLIST LOGIC (SAFE) ---
   const openChecklistModal = (booking: Booking) => {
       setChecklistBooking(booking);
       if (booking.checklist) {
@@ -531,7 +558,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
           checkedBy: currentUser.name
       };
 
-      const updatedBookings = bookings.map(b => {
+      const safeBookings = normalizeData(bookings);
+      const updatedBookings = safeBookings.map(b => {
           if (b.id === checklistBooking.id) {
               const newStatus = b.status === BookingStatus.BOOKED ? BookingStatus.ACTIVE : b.status;
               return { ...b, checklist: updatedChecklist, status: newStatus };
@@ -547,8 +575,9 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   };
 
   const getFilteredBookings = () => {
-      if (!filterStartDate && !filterEndDate) return bookings;
-      return bookings.filter(b => {
+      const safeBookings = normalizeData(bookings);
+      if (!filterStartDate && !filterEndDate) return safeBookings;
+      return safeBookings.filter(b => {
          const bDate = b.startDate.split('T')[0];
          const start = filterStartDate || '0000-00-00';
          const end = filterEndDate || '9999-12-31';
@@ -556,7 +585,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       });
   };
 
-  const selectedCarData = cars.find(c => c.id === selectedCarId);
+  const safeCars = normalizeData(cars);
+  const selectedCarData = safeCars.find(c => c.id === selectedCarId);
 
   return (
     <div className="space-y-6">
@@ -601,20 +631,20 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                          <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><Calendar size={18} /> Jadwal Sewa</h4>
                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase">Mulai</label>
-                                <div className="flex gap-2 mt-1">
-                                    <input required type="date" className="block w-full border p-2 rounded-md text-sm" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                                    <input type="time" className="block w-24 border p-2 rounded-md text-sm" value={startTime} onChange={e => setStartTime(e.target.value)} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase">Selesai (Jadwal)</label>
-                                <div className="flex gap-2 mt-1">
-                                    <input required type="date" className="block w-full border p-2 rounded-md text-sm" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                                    <input type="time" className="block w-24 border p-2 rounded-md text-sm" value={endTime} onChange={e => setEndTime(e.target.value)} />
-                                </div>
-                            </div>
+                           <div>
+                               <label className="block text-xs font-medium text-slate-500 uppercase">Mulai</label>
+                               <div className="flex gap-2 mt-1">
+                                   <input required type="date" className="block w-full border p-2 rounded-md text-sm" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                                   <input type="time" className="block w-24 border p-2 rounded-md text-sm" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                               </div>
+                           </div>
+                           <div>
+                               <label className="block text-xs font-medium text-slate-500 uppercase">Selesai (Jadwal)</label>
+                               <div className="flex gap-2 mt-1">
+                                   <input required type="date" className="block w-full border p-2 rounded-md text-sm" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                                   <input type="time" className="block w-24 border p-2 rounded-md text-sm" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                               </div>
+                           </div>
                          </div>
                     </div>
 
@@ -655,9 +685,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                         </div>
                                     ) : (
                                         availableCars.map(car => {
-                                            const price = car.pricing && car.pricing[packageType] 
-                                                ? car.pricing[packageType] 
-                                                : (car.price24h || 0);
+                                            // Pricing Logic Safe
+                                            const price = (car.pricing && car.pricing[packageType]) || (car.price24h || 0);
                                             const isSelected = selectedCarId === car.id;
 
                                             return (
@@ -724,58 +753,58 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                          <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><Shield size={18} /> Jaminan & Keamanan</h4>
                          <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Tipe Jaminan</label>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border border-slate-200">
-                                        <input type="radio" name="depositType" value="Uang" checked={securityDepositType === 'Uang'} onChange={() => setSecurityDepositType('Uang')} className="text-indigo-600" />
-                                        <span className="text-sm">Uang Tunai / Transfer</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border border-slate-200">
-                                        <input type="radio" name="depositType" value="Barang" checked={securityDepositType === 'Barang'} onChange={() => setSecurityDepositType('Barang')} className="text-indigo-600" />
-                                        <span className="text-sm">Dokumen / Barang</span>
-                                    </label>
-                                </div>
-                            </div>
+                           <div>
+                               <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Tipe Jaminan</label>
+                               <div className="flex gap-4">
+                                   <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border border-slate-200">
+                                       <input type="radio" name="depositType" value="Uang" checked={securityDepositType === 'Uang'} onChange={() => setSecurityDepositType('Uang')} className="text-indigo-600" />
+                                       <span className="text-sm">Uang Tunai / Transfer</span>
+                                   </label>
+                                   <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded border border-slate-200">
+                                       <input type="radio" name="depositType" value="Barang" checked={securityDepositType === 'Barang'} onChange={() => setSecurityDepositType('Barang')} className="text-indigo-600" />
+                                       <span className="text-sm">Dokumen / Barang</span>
+                                   </label>
+                               </div>
+                           </div>
 
-                            {securityDepositType === 'Uang' ? (
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-500 uppercase">Nominal Jaminan (Cash/Transfer)</label>
-                                    <div className="relative mt-1">
-                                        <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
-                                        <input type="number" className="w-full border border-slate-300 rounded-lg p-2 pl-10 text-sm" value={securityDepositValue} onChange={e => setSecurityDepositValue(Number(e.target.value))} />
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-500 uppercase">Keterangan Jaminan (Wajib)</label>
-                                        <input type="text" placeholder="Contoh: KTP Asli + Motor Honda Beat" className="w-full border border-slate-300 rounded-lg p-2 text-sm mt-1" value={securityDepositDescription} onChange={e => setSecurityDepositDescription(e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-500 uppercase">Estimasi Nilai Barang (Opsional)</label>
-                                        <div className="relative mt-1">
-                                            <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
-                                            <input type="number" className="w-full border border-slate-300 rounded-lg p-2 pl-10 text-sm" value={securityDepositValue} onChange={e => setSecurityDepositValue(Number(e.target.value))} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                           {securityDepositType === 'Uang' ? (
+                               <div>
+                                   <label className="block text-xs font-medium text-slate-500 uppercase">Nominal Jaminan (Cash/Transfer)</label>
+                                   <div className="relative mt-1">
+                                       <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
+                                       <input type="number" className="w-full border border-slate-300 rounded-lg p-2 pl-10 text-sm" value={securityDepositValue} onChange={e => setSecurityDepositValue(Number(e.target.value))} />
+                                   </div>
+                               </div>
+                           ) : (
+                               <div className="space-y-3">
+                                   <div>
+                                       <label className="block text-xs font-medium text-slate-500 uppercase">Keterangan Jaminan (Wajib)</label>
+                                       <input type="text" placeholder="Contoh: KTP Asli + Motor Honda Beat" className="w-full border border-slate-300 rounded-lg p-2 text-sm mt-1" value={securityDepositDescription} onChange={e => setSecurityDepositDescription(e.target.value)} />
+                                   </div>
+                                   <div>
+                                       <label className="block text-xs font-medium text-slate-500 uppercase">Estimasi Nilai Barang (Opsional)</label>
+                                       <div className="relative mt-1">
+                                           <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
+                                           <input type="number" className="w-full border border-slate-300 rounded-lg p-2 pl-10 text-sm" value={securityDepositValue} onChange={e => setSecurityDepositValue(Number(e.target.value))} />
+                                       </div>
+                                   </div>
+                               </div>
+                           )}
 
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Foto Jaminan / Barang</label>
-                                <div className="flex items-center gap-4">
-                                    <div className="w-20 h-20 bg-slate-200 rounded-lg flex items-center justify-center overflow-hidden border border-slate-300">
-                                        {depositImage ? (
-                                            <img src={depositImage} className="w-full h-full object-cover" alt="Deposit" />
-                                        ) : <ImageIcon className="text-slate-400" />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <input type="file" accept="image/*" onChange={handleDepositImageUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
-                                        <p className="text-xs text-slate-400 mt-1">Foto KTP / SIM / Fisik Barang Jaminan</p>
-                                    </div>
-                                </div>
-                            </div>
+                           <div>
+                               <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Foto Jaminan / Barang</label>
+                               <div className="flex items-center gap-4">
+                                   <div className="w-20 h-20 bg-slate-200 rounded-lg flex items-center justify-center overflow-hidden border border-slate-300">
+                                       {depositImage ? (
+                                           <img src={depositImage} className="w-full h-full object-cover" alt="Deposit" />
+                                       ) : <ImageIcon className="text-slate-400" />}
+                                   </div>
+                                   <div className="flex-1">
+                                       <input type="file" accept="image/*" onChange={handleDepositImageUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                                       <p className="text-xs text-slate-400 mt-1">Foto KTP / SIM / Fisik Barang Jaminan</p>
+                                   </div>
+                               </div>
+                           </div>
                          </div>
                     </div>
                 </div>
@@ -789,7 +818,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             <label className="block text-xs font-medium text-slate-500 uppercase">Pilih Pelanggan (Opsional)</label>
                             <select className="mt-1 block w-full border p-2 rounded-md text-sm" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}>
                                 <option value="">-- Input Manual --</option>
-                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {normalizeData(customers).map((c: Customer) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
 
@@ -819,7 +848,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                         <div>
                             <label className="block text-xs font-medium text-slate-500 uppercase">Paket Sewa</label>
                             <select className="mt-1 block w-full border p-2 rounded-md text-sm" value={packageType} onChange={(e:any) => setPackageType(e.target.value)}>
-                                {settings.rentalPackages.map(pkg => (
+                                {normalizeData(settings.rentalPackages).map((pkg: string) => (
                                     <option key={pkg} value={pkg}>{pkg}</option>
                                 ))}
                             </select>
@@ -911,7 +940,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                         </button>
                     </div>
                 </div>
-            </form>
+             </form>
         </div>
       )}
 
@@ -956,8 +985,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                         {getFilteredBookings().sort((a,b) => b.createdAt - a.createdAt).map(booking => {
-                            const car = cars.find(c => c.id === booking.carId);
-                            const driver = drivers.find(d => d.id === booking.driverId);
+                            const car = safeCars.find(c => c.id === booking.carId);
+                            const driver = normalizeData(drivers).find((d: Driver) => d.id === booking.driverId);
                             const due = booking.totalPrice - booking.amountPaid;
                             return (
                                 <tr key={booking.id} className="hover:bg-slate-50">
@@ -987,14 +1016,14 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                          <div className="text-sm text-slate-900 font-bold">Rp {booking.totalPrice.toLocaleString('id-ID')}</div>
                                          <div className="text-xs">
-                                            {due > 0 ? (
-                                                <span className="text-red-600">Kurang: {due.toLocaleString('id-ID')}</span>
-                                            ) : (
-                                                <span className="text-green-600 font-medium">Lunas</span>
-                                            )}
+                                             {due > 0 ? (
+                                                 <span className="text-red-600">Kurang: {due.toLocaleString('id-ID')}</span>
+                                             ) : (
+                                                 <span className="text-green-600 font-medium">Lunas</span>
+                                             )}
                                          </div>
                                          {booking.overtimeFee && booking.overtimeFee > 0 ? (
-                                             <div className="text-[10px] text-red-500 mt-1 font-bold">+ Denda: {booking.overtimeFee.toLocaleString('id-ID')}</div>
+                                              <div className="text-[10px] text-red-500 mt-1 font-bold">+ Denda: {booking.overtimeFee.toLocaleString('id-ID')}</div>
                                          ) : null}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex justify-end gap-2">
@@ -1062,11 +1091,11 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700">BBM (Fuel)</label>
                                     <select className="w-full border rounded p-2 mt-1" value={checkFuel} onChange={e => setCheckFuel(e.target.value)}>
-                                        <option value="Full">Full</option>
-                                        <option value="3/4">3/4</option>
-                                        <option value="1/2">1/2</option>
-                                        <option value="1/4">1/4</option>
-                                        <option value="Empty">Empty / Res</option>
+                                            <option value="Full">Full</option>
+                                            <option value="3/4">3/4</option>
+                                            <option value="1/2">1/2</option>
+                                            <option value="1/4">1/4</option>
+                                            <option value="Empty">Empty / Res</option>
                                     </select>
                                 </div>
                             </div>
