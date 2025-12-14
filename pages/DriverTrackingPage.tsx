@@ -4,31 +4,46 @@ import { getStoredData } from '../services/dataService';
 import { MapPin, Phone, Calendar, Clock, Car as CarIcon, User, List, Map as MapIcon, Navigation, Battery } from 'lucide-react';
 
 interface Props {
-    isDriverView?: boolean;
-    driverId?: string;
+  isDriverView?: boolean;
+  driverId?: string;
 }
 
 // Mock Interface for Live Location
 interface LiveLocation {
-    bookingId: string;
-    lat: number;
-    lng: number;
-    speed: number;
-    battery: number;
-    lastUpdate: number;
+  bookingId: string;
+  lat: number;
+  lng: number;
+  speed: number;
+  battery: number;
+  lastUpdate: number;
 }
 
 const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId }) => {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [liveLocations, setLiveLocations] = useState<LiveLocation[]>([]);
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    setBookings(getStoredData<Booking[]>('bookings', []));
-    setDrivers(getStoredData<Driver[]>('drivers', []));
-    setCars(getStoredData<Car[]>('cars', []));
+    // Load Data & Sanitize
+    const rawBookings = getStoredData<Booking[]>('bookings', []);
+    const rawDrivers = getStoredData<Driver[]>('drivers', []);
+    const rawCars = getStoredData<Car[]>('cars', []);
+
+    setBookings(normalizeData(rawBookings));
+    setDrivers(normalizeData(rawDrivers));
+    setCars(normalizeData(rawCars));
 
     // Simulate Live Data on Mount
     const timer = setInterval(() => {
@@ -48,6 +63,9 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
   const todayStr = now.toISOString().split('T')[0];
 
   const isBookingActiveToday = (b: Booking) => {
+      // Safety check
+      if (!b || !b.startDate || !b.endDate) return false;
+
       const start = new Date(b.startDate);
       const end = new Date(b.endDate);
       const isToday = b.startDate.startsWith(todayStr) || b.endDate.startsWith(todayStr);
@@ -55,7 +73,12 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
       return (isActiveNow || isToday) && b.status !== 'Cancelled';
   };
 
-  const activeBookings = bookings.filter(b => {
+  // Safe Filtering
+  const safeBookings = normalizeData(bookings);
+  const safeDrivers = normalizeData(drivers);
+  const safeCars = normalizeData(cars);
+
+  const activeBookings = safeBookings.filter(b => {
       if (isDriverView) {
           const end = new Date(b.endDate);
           return b.driverId === driverId && end >= now && b.status !== 'Cancelled';
@@ -125,8 +148,8 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
 
             {/* Render Pins */}
             {activeBookings.map(booking => {
-                const driver = drivers.find(d => d.id === booking.driverId);
-                const car = cars.find(c => c.id === booking.carId);
+                const driver = safeDrivers.find(d => d.id === booking.driverId);
+                const car = safeCars.find(c => c.id === booking.carId);
                 const loc = liveLocations.find(l => l.bookingId === booking.id) || { lat: 50, lng: 50, speed: 0, battery: 0 };
                 
                 return (
@@ -140,7 +163,7 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
                         
                         {/* Marker Icon */}
                         <div className="relative bg-white p-1 rounded-full border-2 border-indigo-600 shadow-lg z-20">
-                            <img src={driver?.image} className="w-8 h-8 rounded-full object-cover" alt="Driver" />
+                            <img src={driver?.image || 'https://via.placeholder.com/32'} className="w-8 h-8 rounded-full object-cover" alt="Driver" />
                         </div>
 
                         {/* Hover Tooltip */}
@@ -168,8 +191,8 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
             )}
 
             {activeBookings.sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()).map(booking => {
-                const driver = drivers.find(d => d.id === booking.driverId);
-                const car = cars.find(c => c.id === booking.carId);
+                const driver = safeDrivers.find(d => d.id === booking.driverId);
+                const car = safeCars.find(c => c.id === booking.carId);
                 const isNow = new Date(booking.startDate) <= now && new Date(booking.endDate) >= now;
                 const loc = liveLocations.find(l => l.bookingId === booking.id) || { speed: 0 };
 
@@ -179,7 +202,7 @@ const DriverTrackingPage: React.FC<Props> = ({ isDriverView = false, driverId })
                         
                         {!isDriverView && driver && (
                             <div className="flex items-center gap-3 mb-4">
-                                <img src={driver.image} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"/>
+                                <img src={driver.image || 'https://via.placeholder.com/48'} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"/>
                                 <div>
                                     <h3 className="font-bold text-slate-800">{driver.name}</h3>
                                     <p className="text-xs text-slate-500 flex items-center gap-1"><Phone size={10}/> {driver.phone}</p>
