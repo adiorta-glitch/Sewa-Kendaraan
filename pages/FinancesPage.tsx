@@ -5,16 +5,35 @@ import { ArrowDownLeft, ArrowUpRight, Download } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 
 const FinancesPage = () => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    // In a real app, transactions would be derived from Bookings + Manual Expenses
-    // Here we sync initial transaction load or mock it
-    setTransactions(getStoredData<Transaction[]>('transactions', []));
+    // Load Data & Sanitize
+    const rawTx = getStoredData<Transaction[]>('transactions', []);
+    setTransactions(normalizeData(rawTx));
   }, []);
 
-  const totalIncome = transactions.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
+  // --- 3. SAFE CALCULATION ---
+  // Pastikan reduce berjalan di array yang aman
+  const safeTransactions = normalizeData(transactions);
+
+  const totalIncome = safeTransactions
+    .filter(t => t.type === 'Income')
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  const totalExpense = safeTransactions
+    .filter(t => t.type === 'Expense')
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    
   const netProfit = totalIncome - totalExpense;
 
   const downloadReport = () => {
@@ -35,13 +54,13 @@ const FinancesPage = () => {
       doc.line(14, y+2, 196, y+2);
       y += 8;
 
-      transactions.forEach(t => {
+      safeTransactions.forEach(t => {
           if (y > 270) { doc.addPage(); y = 20; }
           const date = new Date(t.date).toLocaleDateString('id-ID');
           doc.text(date, 14, y);
-          doc.text(t.description.substring(0, 40), 50, y);
-          doc.text(t.type, 140, y);
-          doc.text(t.amount.toLocaleString('id-ID'), 170, y);
+          doc.text((t.description || '').substring(0, 40), 50, y);
+          doc.text(t.type || '-', 140, y);
+          doc.text((t.amount || 0).toLocaleString('id-ID'), 170, y);
           y += 6;
       });
 
@@ -99,26 +118,27 @@ const FinancesPage = () => {
                       </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200">
-                      {transactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => (
-                          <tr key={t.id} className="hover:bg-slate-50">
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                  {new Date(t.date).toLocaleDateString('id-ID')}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-slate-900">
-                                  {t.description}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${t.type === 'Income' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                      {t.type}
-                                  </span>
-                              </td>
-                              <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${t.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {t.type === 'Income' ? '+' : '-'} Rp {t.amount.toLocaleString('id-ID')}
-                              </td>
-                          </tr>
-                      ))}
-                      {transactions.length === 0 && (
+                      {safeTransactions.length === 0 ? (
                           <tr><td colSpan={4} className="text-center py-8 text-slate-500">Belum ada transaksi.</td></tr>
+                      ) : (
+                          safeTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => (
+                              <tr key={t.id} className="hover:bg-slate-50">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                      {new Date(t.date).toLocaleDateString('id-ID')}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-slate-900">
+                                      {t.description}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${t.type === 'Income' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                          {t.type}
+                                      </span>
+                                  </td>
+                                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${t.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
+                                      {t.type === 'Income' ? '+' : '-'} Rp {(Number(t.amount) || 0).toLocaleString('id-ID')}
+                                  </td>
+                              </tr>
+                          ))
                       )}
                   </tbody>
               </table>
