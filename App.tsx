@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Car, CalendarRange, Users, Wallet, Menu, X, UserCog, CalendarClock, Settings, LogOut, MapPin, Receipt, PieChart, UserCircle } from 'lucide-react';
 
-// UPDATE IMPORTS: Menambahkan Mock Data untuk Fallback
+// UPDATE IMPORTS: Menambahkan setStoredData untuk fitur Auto-Seeding
 import { 
   getStoredData, 
+  setStoredData, // <--- PENTING: Ditambahkan agar bisa simpan data otomatis
   DEFAULT_SETTINGS, 
   INITIAL_CARS, 
   INITIAL_PARTNERS, 
@@ -14,7 +15,7 @@ import {
 } from './services/dataService';
 
 import { getCurrentUser, logout } from './services/authService';
-import { User, AppSettings, Car as CarType, Partner, Driver, Customer, HighSeason } from './types'; // Pastikan Type diimport
+import { User, AppSettings, Car as CarType, Partner, Driver, Customer, HighSeason } from './types'; 
 import { Logo, LogoText } from './components/Logo';
 import Dashboard from './pages/Dashboard';
 import BookingPage from './pages/BookingPage';
@@ -29,8 +30,6 @@ import DriverTrackingPage from './pages/DriverTrackingPage';
 import ExpensesPage from './pages/ExpensesPage';
 import StatisticsPage from './pages/StatisticsPage';
 
-// HAPUS: initializeData(); // Tidak lagi digunakan karena kita pakai hybrid fetch di dalam component
-
 // --- THEME ENGINE (TIDAK BERUBAH) ---
 const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string, text: string}} = {
     red: { main: '#DC2626', hover: '#B91C1C', light: '#FEF2F2', text: '#DC2626' },
@@ -43,14 +42,12 @@ const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string,
 
 const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
     useEffect(() => {
-        // 1. Handle Dark Mode
         if (settings.darkMode) {
             document.documentElement.classList.add('dark');
         } else {
             document.documentElement.classList.remove('dark');
         }
 
-        // 2. Handle Color Theme Injection
         const color = THEME_COLORS[settings.themeColor || 'red'] || THEME_COLORS['red'];
         
         const styleId = 'brc-theme-styles';
@@ -117,7 +114,6 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
-  // Role Helpers
   const isSuperAdmin = user.role === 'superadmin';
   const isStaff = user.role === 'admin';
   const isDriver = user.role === 'driver';
@@ -125,12 +121,10 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
   
   const isOperational = isStaff || isSuperAdmin;
 
-  // UPDATE: Menggunakan Async/Await untuk memuat Settings dari Firebase (atau fallback)
   useEffect(() => {
     const loadSettings = async () => {
         try {
             const loadedSettings = await getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-            // Type assertion atau check diperlukan karena return type bisa array atau object
             if (loadedSettings && !Array.isArray(loadedSettings)) {
                  setSettings(loadedSettings as AppSettings);
             }
@@ -224,7 +218,6 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
             </>
           )}
 
-          {/* Settings available for everyone (Help Menu) */}
           <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700">
             <SidebarItem to="/settings" icon={Settings} label="Pengaturan" />
           </div>
@@ -355,27 +348,39 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // UPDATE: Inisialisasi Asinkron
+  // LOGIKA "P3K" (PERTOLONGAN PERTAMA PADA KEKOSONGAN)
+  // Ini akan otomatis mengisi database jika terdeteksi kosong
   useEffect(() => {
     const initApp = async () => {
-        // "Warm up" koneksi database dengan mencoba mengambil data,
-        // meskipun kita tidak menyimpannya di state App (tiap halaman ambil sendiri).
-        // Ini memastikan 'getStoredData' dipanggil dan logika fallback aktif.
         try {
-            await Promise.all([
-                getStoredData<CarType>('cars', INITIAL_CARS),
-                getStoredData<Partner>('partners', INITIAL_PARTNERS),
-                getStoredData<Driver>('drivers', INITIAL_DRIVERS),
-                getStoredData<Customer>('customers', INITIAL_CUSTOMERS),
-                getStoredData<HighSeason>('highSeasons', INITIAL_HIGH_SEASONS)
-            ]);
-        } catch (e) {
-            console.log("Inisialisasi data background selesai (dengan fallback).");
-        }
+            // 1. Cek Data Mobil (Indikator Utama)
+            const existingCars = await getStoredData<CarType>('cars', []);
+            
+            // 2. Jika kosong (Array length 0), berarti Database baru dihapus/bersih
+            //    Maka kita harus "SEEDING" (Isi Ulang) data agar Dashboard tidak crash.
+            if (!existingCars || (Array.isArray(existingCars) && existingCars.length === 0)) {
+                console.log("⚠️ Database terdeteksi kosong. Melakukan AUTO-SEEDING data awal...");
+                
+                await Promise.all([
+                    setStoredData('cars', INITIAL_CARS),
+                    setStoredData('partners', INITIAL_PARTNERS),
+                    setStoredData('drivers', INITIAL_DRIVERS),
+                    setStoredData('customers', INITIAL_CUSTOMERS),
+                    setStoredData('highSeasons', INITIAL_HIGH_SEASONS)
+                ]);
+                console.log("✅ Auto-Seeding Selesai. Aplikasi siap digunakan.");
+            } else {
+                console.log("✅ Database aman (data ditemukan).");
+            }
 
-        const currentUser = getCurrentUser();
-        setUser(currentUser);
-        setLoading(false);
+        } catch (e) {
+            console.error("Gagal saat inisialisasi:", e);
+        } finally {
+            // Apapun yang terjadi, matikan loading agar user bisa masuk
+            const currentUser = getCurrentUser();
+            setUser(currentUser);
+            setLoading(false);
+        }
     };
 
     initApp();
@@ -390,7 +395,17 @@ const App: React.FC = () => {
     setUser(null);
   };
 
-  if (loading) return null;
+  if (loading) {
+      // Tampilan Loading sederhana saat "Menyiapkan Data"
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+            <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                <p className="text-slate-600 dark:text-slate-400">Menyiapkan Database...</p>
+            </div>
+        </div>
+      );
+  }
 
   return (
     <Router>
