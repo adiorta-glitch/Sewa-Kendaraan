@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppSettings, User } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS } from '../services/dataService';
@@ -7,7 +6,7 @@ import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check,
 import { Logo } from '../components/Logo';
 
 interface Props {
-    currentUser: User;
+  currentUser: User;
 }
 
 const SettingsPage: React.FC<Props> = ({ currentUser }) => {
@@ -16,6 +15,15 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const isDriver = currentUser.role === 'driver';
   const isPartner = currentUser.role === 'partner';
 
+  // --- 1. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  // Fungsi ini mengubah Object/Null menjadi Array agar aplikasi tidak crash
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   // Default tab based on role
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'general' : 'help');
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -23,7 +31,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [isSaved, setIsSaved] = useState(false);
 
   // Users Form
-  const [editingUserId, setEditingUserId] = useState<string | null>(null); // New: Track editing state
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
@@ -38,8 +46,18 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [newPackage, setNewPackage] = useState('');
 
   useEffect(() => {
-    setSettings(getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS));
-    setUsers(getUsers());
+    // Load Settings & Sanitize Arrays
+    const rawSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
+    setSettings({
+        ...rawSettings,
+        // Pastikan kategori dan paket selalu Array
+        carCategories: normalizeData(rawSettings.carCategories),
+        rentalPackages: normalizeData(rawSettings.rentalPackages)
+    });
+
+    // Load Users & Sanitize
+    const rawUsers = getUsers();
+    setUsers(normalizeData(rawUsers)); // <--- PENGAMAN DI SINI
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -82,7 +100,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const handleEditUser = (u: User) => {
       setEditingUserId(u.id);
       setUsername(u.username);
-      setPassword(u.password || ''); // Populate password for simple edit
+      setPassword(u.password || ''); 
       setFullName(u.name);
       setEmail(u.email || '');
       setPhone(u.phone || '');
@@ -90,7 +108,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setUserImage(u.image || null);
       setEnableFingerprint(u.hasFingerprint || false);
       
-      // Scroll to form
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -123,7 +140,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       };
 
       saveUser(userPayload);
-      setUsers(getUsers());
+      // Refresh list dengan normalizeData
+      setUsers(normalizeData(getUsers())); 
       resetUserForm();
   };
 
@@ -131,30 +149,36 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       if (id === currentUser.id) return alert("Tidak bisa menghapus akun sendiri!");
       if (confirm("Hapus user ini?")) {
           deleteUser(id);
-          setUsers(getUsers());
+          // Refresh list dengan normalizeData
+          setUsers(normalizeData(getUsers())); 
           if (editingUserId === id) resetUserForm();
       }
   };
 
   // Master Data Management
+  // Gunakan '|| []' untuk memastikan carCategories dianggap array jika state corrupt
   const addCategory = () => {
-      if(newCategory && !settings.carCategories.includes(newCategory)) {
-          setSettings(prev => ({...prev, carCategories: [...prev.carCategories, newCategory]}));
+      const currentCats = normalizeData(settings.carCategories);
+      if(newCategory && !currentCats.includes(newCategory)) {
+          setSettings(prev => ({...prev, carCategories: [...currentCats, newCategory]}));
           setNewCategory('');
       }
   };
   const removeCategory = (cat: string) => {
-      setSettings(prev => ({...prev, carCategories: prev.carCategories.filter(c => c !== cat)}));
+      const currentCats = normalizeData(settings.carCategories);
+      setSettings(prev => ({...prev, carCategories: currentCats.filter((c: string) => c !== cat)}));
   };
 
   const addPackage = () => {
-      if(newPackage && !settings.rentalPackages.includes(newPackage)) {
-          setSettings(prev => ({...prev, rentalPackages: [...prev.rentalPackages, newPackage]}));
+      const currentPkgs = normalizeData(settings.rentalPackages);
+      if(newPackage && !currentPkgs.includes(newPackage)) {
+          setSettings(prev => ({...prev, rentalPackages: [...currentPkgs, newPackage]}));
           setNewPackage('');
       }
   };
   const removePackage = (pkg: string) => {
-      setSettings(prev => ({...prev, rentalPackages: prev.rentalPackages.filter(p => p !== pkg)}));
+      const currentPkgs = normalizeData(settings.rentalPackages);
+      setSettings(prev => ({...prev, rentalPackages: currentPkgs.filter((p: string) => p !== pkg)}));
   };
 
   const THEME_OPTIONS = [
@@ -235,7 +259,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
 
                   {/* CONTENT FOR ADMIN & SUPERADMIN */}
                   {(isAdmin || isSuperAdmin) && (
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
                               <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">1. Dashboard</h4>
                               <p className="text-sm text-slate-600 dark:text-slate-300">Ringkasan unit ready, pendapatan harian, unit sedang jalan, dan kalender booking.</p>
@@ -263,7 +287,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                   </p>
                               </div>
                           )}
-                       </div>
+                        </div>
                   )}
                   
                   <div className="mt-8 pt-6 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -304,8 +328,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
 
                   {/* Dark Mode Toggle */}
                   <div className="pt-6 border-t dark:border-slate-700">
-                       <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-4">Mode Tampilan</h4>
-                       <div className="flex items-center gap-4">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-4">Mode Tampilan</h4>
+                        <div className="flex items-center gap-4">
                             <button
                                 onClick={() => !settings.darkMode && toggleDarkMode()}
                                 className={`flex-1 p-4 rounded-xl border-2 flex items-center justify-center gap-3 transition-all ${!settings.darkMode ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 font-bold' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}
@@ -318,11 +342,11 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             >
                                 <Moon size={24} /> Mode Gelap (Dark)
                             </button>
-                       </div>
+                        </div>
                   </div>
 
                   <div className="pt-6 border-t dark:border-slate-700">
-                     <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Pengaturan Tampilan</button>
+                      <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Pengaturan Tampilan</button>
                   </div>
               </div>
           )}
@@ -429,7 +453,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                           <button onClick={addCategory} className="bg-indigo-600 text-white px-4 rounded font-bold hover:bg-indigo-700">Tambah</button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                          {settings.carCategories.map(cat => (
+                          {/* Pastikan menggunakan normalizeData agar tidak error jika data kosong */}
+                          {normalizeData(settings.carCategories).map((cat: string) => (
                               <span key={cat} className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border border-slate-200 dark:border-slate-600">
                                   {cat}
                                   <button onClick={() => removeCategory(cat)} className="text-slate-400 hover:text-red-600"><X size={14}/></button>
@@ -450,7 +475,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                           <button onClick={addPackage} className="bg-indigo-600 text-white px-4 rounded font-bold hover:bg-indigo-700">Tambah</button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                          {settings.rentalPackages.map(pkg => (
+                          {normalizeData(settings.rentalPackages).map((pkg: string) => (
                               <span key={pkg} className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border border-slate-200 dark:border-slate-600">
                                   {pkg}
                                   <button onClick={() => removePackage(pkg)} className="text-slate-400 hover:text-red-600"><X size={14}/></button>
@@ -460,7 +485,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                   </div>
                   
                   <div className="pt-6 border-t dark:border-slate-700">
-                     <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Master Data</button>
+                      <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Master Data</button>
                   </div>
               </div>
           )}
@@ -564,7 +589,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y dark:divide-slate-700">
-                                {users.map(u => (
+                                {/* users yang di-map di sini sudah dijamin Array oleh normalizeData, jadi aman */}
+                                {normalizeData(users).map((u: User) => (
                                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                         <td className="px-4 py-2 text-sm">
                                             <div className="flex items-center gap-3">
