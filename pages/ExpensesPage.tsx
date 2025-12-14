@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction, Driver, User, Partner } from '../types';
 import { getStoredData, setStoredData, exportToCSV } from '../services/dataService';
@@ -6,11 +5,12 @@ import { Plus, Image as ImageIcon, X, Upload, CheckCircle, Clock, User as UserIc
 import { getCurrentUser } from '../services/authService';
 
 interface Props {
-    isDriverView?: boolean;
-    isPartnerView?: boolean;
+  isDriverView?: boolean;
+  isPartnerView?: boolean;
 }
 
 const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = false }) => {
+  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -30,11 +30,26 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   
   const [selectedPartnerId, setSelectedPartnerId] = useState('');
 
+  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
+  const normalizeData = (data: any) => {
+    if (!data) return []; 
+    if (Array.isArray(data)) return data; 
+    if (typeof data === 'object') return Object.values(data); 
+    return [];
+  };
+
   useEffect(() => {
-    const allTx = getStoredData<Transaction[]>('transactions', []);
-    setTransactions(allTx.filter(t => t.type === 'Expense'));
-    setDrivers(getStoredData<Driver[]>('drivers', []));
-    setPartners(getStoredData<Partner[]>('partners', []));
+    // Load & Sanitize Data
+    const rawTx = getStoredData<Transaction[]>('transactions', []);
+    const rawDrivers = getStoredData<Driver[]>('drivers', []);
+    const rawPartners = getStoredData<Partner[]>('partners', []);
+
+    const safeTx = normalizeData(rawTx);
+    
+    // Filter safely
+    setTransactions(safeTx.filter(t => t.type === 'Expense'));
+    setDrivers(normalizeData(rawDrivers));
+    setPartners(normalizeData(rawPartners));
     
     if (isDriverView) setCategory('Reimbursement');
     if (isPartnerView) setCategory('Setor Mitra');
@@ -79,11 +94,12 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
         relatedId: relatedId
     };
 
-    const allTx = getStoredData<Transaction[]>('transactions', []);
-    const updated = [newTx, ...allTx];
+    // Load existing data safely using normalizeData
+    const currentTx = normalizeData(getStoredData<Transaction[]>('transactions', []));
+    const updated = [newTx, ...currentTx];
     
     setStoredData('transactions', updated);
-    setTransactions(updated.filter(t => t.type === 'Expense'));
+    setTransactions(updated.filter((t: Transaction) => t.type === 'Expense'));
     setIsModalOpen(false);
     resetForm();
   };
@@ -91,10 +107,11 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   const handleUpdateStatus = (id: string, newStatus: 'Paid') => {
       const confirmMsg = newStatus === 'Paid' ? 'Tandai transaksi ini sebagai sudah dibayar/disetor?' : 'Update status?';
       if(confirm(confirmMsg)) {
-          const allTx = getStoredData<Transaction[]>('transactions', []);
-          const updated = allTx.map(t => t.id === id ? { ...t, status: newStatus } : t);
+          const currentTx = normalizeData(getStoredData<Transaction[]>('transactions', []));
+          const updated = currentTx.map((t: Transaction) => t.id === id ? { ...t, status: newStatus } : t);
+          
           setStoredData('transactions', updated);
-          setTransactions(updated.filter(t => t.type === 'Expense'));
+          setTransactions(updated.filter((t: Transaction) => t.type === 'Expense'));
       }
   };
 
@@ -106,8 +123,8 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
       setSelectedPartnerId('');
   };
 
-  // Filter View
-  let displayedTransactions = transactions;
+  // Filter View Logic (Safe)
+  let displayedTransactions = transactions; // transactions state is already sanitized array
   
   // Date Filtering
   if (filterStartDate || filterEndDate) {
@@ -132,9 +149,10 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
 
   const getEntityName = (relatedId?: string) => {
       if (!relatedId) return null;
-      const d = drivers.find(d => d.id === relatedId);
+      // Ensure searching in safe arrays
+      const d = normalizeData(drivers).find((d: Driver) => d.id === relatedId);
       if (d) return d.name;
-      const p = partners.find(p => p.id === relatedId);
+      const p = normalizeData(partners).find((p: Partner) => p.id === relatedId);
       if (p) return p.name;
       return null;
   }
@@ -239,7 +257,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
                                         )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-red-600">
-                                        Rp {t.amount.toLocaleString('id-ID')}
+                                        Rp {Number(t.amount).toLocaleString('id-ID')}
                                     </td>
                                     {(!isDriverView && !isPartnerView) && (
                                         <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -303,7 +321,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
                               <label className="block text-sm font-medium text-slate-700">Pilih Mitra</label>
                               <select required className="w-full border rounded-lg p-2.5 mt-1" value={selectedPartnerId} onChange={e => setSelectedPartnerId(e.target.value)}>
                                   <option value="">-- Pilih Mitra --</option>
-                                  {partners.map(p => (
+                                  {normalizeData(partners).map((p: Partner) => (
                                       <option key={p.id} value={p.id}>{p.name} (Split: {p.splitPercentage}%)</option>
                                   ))}
                               </select>
