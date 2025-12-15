@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Car, CalendarRange, Users, Wallet, Menu, X, UserCog, CalendarClock, Settings, LogOut, MapPin, Receipt, PieChart, UserCircle } from 'lucide-react';
 
-// UPDATE IMPORTS: Menambahkan setStoredData untuk fitur Auto-Seeding
 import { 
   getStoredData, 
-  setStoredData, // <--- PENTING: Ditambahkan agar bisa simpan data otomatis
+  setStoredData, 
   DEFAULT_SETTINGS, 
   INITIAL_CARS, 
   INITIAL_PARTNERS, 
@@ -15,8 +14,10 @@ import {
 } from './services/dataService';
 
 import { getCurrentUser, logout } from './services/authService';
-import { User, AppSettings, Car as CarType, Partner, Driver, Customer, HighSeason } from './types'; 
+import { User, AppSettings, Car as CarType } from './types'; 
 import { Logo, LogoText } from './components/Logo';
+
+// Import Pages
 import Dashboard from './pages/Dashboard';
 import BookingPage from './pages/BookingPage';
 import FleetPage from './pages/FleetPage';
@@ -30,7 +31,7 @@ import DriverTrackingPage from './pages/DriverTrackingPage';
 import ExpensesPage from './pages/ExpensesPage';
 import StatisticsPage from './pages/StatisticsPage';
 
-// --- THEME ENGINE (TIDAK BERUBAH) ---
+// --- THEME ENGINE ---
 const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string, text: string}} = {
     red: { main: '#DC2626', hover: '#B91C1C', light: '#FEF2F2', text: '#DC2626' },
     blue: { main: '#2563EB', hover: '#1D4ED8', light: '#EFF6FF', text: '#2563EB' },
@@ -42,13 +43,17 @@ const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string,
 
 const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
     useEffect(() => {
-        if (settings.darkMode) {
+        // Safe check for settings
+        const safeSettings = settings || DEFAULT_SETTINGS;
+
+        if (safeSettings.darkMode) {
             document.documentElement.classList.add('dark');
         } else {
             document.documentElement.classList.remove('dark');
         }
 
-        const color = THEME_COLORS[settings.themeColor || 'red'] || THEME_COLORS['red'];
+        const colorKey = safeSettings.themeColor || 'red';
+        const color = THEME_COLORS[colorKey] || THEME_COLORS['red'];
         
         const styleId = 'brc-theme-styles';
         let styleTag = document.getElementById(styleId);
@@ -59,18 +64,16 @@ const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
         }
 
         styleTag.innerHTML = `
-            /* OVERRIDE RED BUTTONS/TEXT */
+            /* OVERRIDE COLORS */
             .bg-red-600, .bg-indigo-600 { background-color: ${color.main} !important; }
             .hover\\:bg-red-700:hover, .hover\\:bg-indigo-700:hover { background-color: ${color.hover} !important; }
             .text-red-600, .text-indigo-600, .text-indigo-700 { color: ${color.text} !important; }
             .bg-red-50, .bg-indigo-50 { background-color: ${color.light} !important; }
             .border-red-600, .focus\\:border-red-600:focus, .focus\\:ring-red-600:focus { border-color: ${color.main} !important; --tw-ring-color: ${color.main} !important; }
             .border-indigo-600 { border-color: ${color.main} !important; }
-            
-            /* Specific fix for Sidebar Active State */
             .bg-red-600.text-white { background-color: ${color.main} !important; }
             
-            /* Dark Mode Overrides for Layout */
+            /* Dark Mode Overrides */
             .dark body { background-color: #0F172A !important; color: #F8FAFC !important; }
             .dark .bg-white { background-color: #1E293B !important; color: #F8FAFC !important; border-color: #334155 !important; }
             .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #334155 !important; border-color: #475569 !important; color: #F1F5F9 !important; }
@@ -79,12 +82,12 @@ const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
             .dark .border-slate-200, .dark .border-slate-100 { border-color: #334155 !important; }
             .dark input, .dark select, .dark textarea { background-color: #0F172A !important; border-color: #475569 !important; color: white !important; }
         `;
-    }, [settings.themeColor, settings.darkMode]);
+    }, [settings]);
 
     return null;
 };
 
-// --- COMPONENTS (Sidebar, Nav) ---
+// --- COMPONENTS ---
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
@@ -122,18 +125,15 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
   const isOperational = isStaff || isSuperAdmin;
 
   useEffect(() => {
-    const loadSettings = async () => {
-        try {
-            const loadedSettings = await getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-            if (loadedSettings && !Array.isArray(loadedSettings)) {
-                 setSettings(loadedSettings as AppSettings);
-            }
-        } catch (error) {
-            console.error("Gagal memuat settings:", error);
-            setSettings(DEFAULT_SETTINGS);
+    // Safe load settings
+    try {
+        const loaded = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
+        if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
+             setSettings({ ...DEFAULT_SETTINGS, ...loaded });
         }
-    };
-    loadSettings();
+    } catch (error) {
+        console.error("Settings load error", error);
+    }
   }, []);
 
   const UserProfile = ({ showName = true }) => (
@@ -197,7 +197,7 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
           {isPartner && (
               <>
                 <div className="px-4 py-2 mb-2">
-                    <p className="text-xs font-semibold text-slate-400 uppercase">Menu Mitra</p>
+                   <p className="text-xs font-semibold text-slate-400 uppercase">Menu Mitra</p>
                 </div>
                 <SidebarItem to="/partners" icon={Users} label="Pendapatan Saya" />
                 <SidebarItem to="/fleet" icon={Car} label="Unit Saya" />
@@ -265,7 +265,7 @@ const AppLayout = ({ children, user, onLogout }: { children: React.ReactNode, us
           {isPartner && (
               <>
                 <SidebarItem to="/partners" icon={Users} label="Pendapatan" />
-                <SidebarItem to="/fleet" icon={Car} label="Unit Saya" />
+                <SidebarItem to="/fleet" icon={Car} label="Unit" />
                 <SidebarItem to="/expenses" icon={Receipt} label="Setoran" />
               </>
           )}
@@ -348,17 +348,19 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // LOGIKA "P3K" (PERTOLONGAN PERTAMA PADA KEKOSONGAN)
-  // Ini akan otomatis mengisi database jika terdeteksi kosong
+  // LOGIKA "P3K" - SAFE AUTO SEEDING
   useEffect(() => {
     const initApp = async () => {
         try {
+            // Helper pengaman
+            const normalize = (data: any) => (Array.isArray(data) ? data : []);
+
             // 1. Cek Data Mobil (Indikator Utama)
-            const existingCars = await getStoredData<CarType>('cars', []);
+            const rawCars = await getStoredData<CarType>('cars', []);
+            const existingCars = normalize(rawCars);
             
-            // 2. Jika kosong (Array length 0), berarti Database baru dihapus/bersih
-            //    Maka kita harus "SEEDING" (Isi Ulang) data agar Dashboard tidak crash.
-            if (!existingCars || (Array.isArray(existingCars) && existingCars.length === 0)) {
+            // 2. Jika kosong, SEEDING
+            if (existingCars.length === 0) {
                 console.log("⚠️ Database terdeteksi kosong. Melakukan AUTO-SEEDING data awal...");
                 
                 await Promise.all([
@@ -368,17 +370,21 @@ const App: React.FC = () => {
                     setStoredData('customers', INITIAL_CUSTOMERS),
                     setStoredData('highSeasons', INITIAL_HIGH_SEASONS)
                 ]);
-                console.log("✅ Auto-Seeding Selesai. Aplikasi siap digunakan.");
+                console.log("✅ Auto-Seeding Selesai.");
             } else {
-                console.log("✅ Database aman (data ditemukan).");
+                console.log("✅ Database aman.");
             }
 
         } catch (e) {
             console.error("Gagal saat inisialisasi:", e);
         } finally {
-            // Apapun yang terjadi, matikan loading agar user bisa masuk
-            const currentUser = getCurrentUser();
-            setUser(currentUser);
+            // Load user & finish loading
+            try {
+                const currentUser = getCurrentUser();
+                setUser(currentUser);
+            } catch (e) {
+                console.error("Auth error", e);
+            }
             setLoading(false);
         }
     };
@@ -396,12 +402,11 @@ const App: React.FC = () => {
   };
 
   if (loading) {
-      // Tampilan Loading sederhana saat "Menyiapkan Data"
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
             <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-                <p className="text-slate-600 dark:text-slate-400">Menyiapkan Database...</p>
+                <p className="text-slate-600 dark:text-slate-400">Menyiapkan Aplikasi...</p>
             </div>
         </div>
       );
@@ -417,7 +422,7 @@ const App: React.FC = () => {
           user ? (
             <AppLayout user={user} onLogout={handleLogout}>
                <Routes>
-                  {/* Driver Role Limited Access */}
+                  {/* Driver Role */}
                   {user.role === 'driver' && (
                       <>
                         <Route path="/tracking" element={<DriverTrackingPage isDriverView={true} driverId={user.linkedDriverId} />} />
@@ -427,7 +432,7 @@ const App: React.FC = () => {
                       </>
                   )}
 
-                   {/* Partner Role Limited Access */}
+                   {/* Partner Role */}
                    {user.role === 'partner' && (
                       <>
                         <Route path="/partners" element={<PartnersPage currentUser={user} />} />
