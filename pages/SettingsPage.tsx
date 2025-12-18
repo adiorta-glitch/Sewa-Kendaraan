@@ -1,14 +1,38 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppSettings, User } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage, generateDummyData, clearAllData } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
-import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap, Loader2, ChevronDown, ChevronUp, BookOpen, AlertCircle } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
 interface Props {
     currentUser: User;
 }
+
+// Helper Component for FAQ Accordion
+const FaqItem = ({ question, answer }: { question: string, answer: React.ReactNode }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex justify-between items-center p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+            >
+                <span className="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
+                    <HelpCircle size={16} className="text-indigo-600"/> {question}
+                </span>
+                {isOpen ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
+            </button>
+            {isOpen && (
+                <div className="p-4 pt-0 text-sm text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 mt-2">
+                    <div className="pt-3">{answer}</div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [searchParams] = useSearchParams();
@@ -21,6 +45,9 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // System Tools Loading State
+  const [isProcessingSystem, setIsProcessingSystem] = useState(false);
 
   // Users Form
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -55,9 +82,9 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
     setIsSaved(false);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStoredData('appSettings', settings);
+    await setStoredData('appSettings', settings);
     setIsSaved(true);
     setTimeout(() => window.location.reload(), 1000);
   };
@@ -176,15 +203,18 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setSettings(prev => ({...prev, rentalPackages: prev.rentalPackages.filter(p => p !== pkg)}));
   };
 
-  const handleDummyData = () => {
+  // UPDATED ASYNC HANDLERS
+  const handleDummyData = async () => {
       if(confirm('Ingin mengisi sistem dengan data dummy untuk percobaan? (Data lama akan tertimpa)')) {
-          generateDummyData();
+          setIsProcessingSystem(true);
+          await generateDummyData();
       }
   };
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
       if(confirm('BAHAYA: Apakah Anda yakin ingin MENGHAPUS SELURUH DATA operasional (Mobil, Driver, Booking, Transaksi)? Tindakan ini tidak dapat dibatalkan.')) {
-          clearAllData();
+          setIsProcessingSystem(true);
+          await clearAllData();
       }
   };
 
@@ -241,7 +271,14 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                               <h4 className="font-bold text-indigo-900 dark:text-indigo-100">Mode Percobaan</h4>
                           </div>
                           <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">Isi sistem dengan data dummy (Mobil, Driver, Booking, Transaksi) untuk mencoba fitur aplikasi dengan cepat.</p>
-                          <button onClick={handleDummyData} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors w-full">Buatkan Data Dummy</button>
+                          <button 
+                            onClick={handleDummyData} 
+                            disabled={isProcessingSystem}
+                            className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors w-full flex items-center justify-center gap-2 disabled:opacity-70"
+                          >
+                              {isProcessingSystem ? <Loader2 size={18} className="animate-spin"/> : null}
+                              {isProcessingSystem ? 'Sedang Memproses...' : 'Buatkan Data Dummy'}
+                          </button>
                       </div>
 
                       <div className="p-6 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900/30">
@@ -250,7 +287,14 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                               <h4 className="font-bold text-red-900 dark:text-red-100">Reset Total</h4>
                           </div>
                           <p className="text-sm text-red-700 dark:text-red-300 mb-4">Hapus seluruh data operasional untuk memulai dari awal (Kosong). Pengaturan profil perusahaan dan akun user akan tetap aman.</p>
-                          <button onClick={handleClearData} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition-colors w-full">Hapus Seluruh Data</button>
+                          <button 
+                            onClick={handleClearData} 
+                            disabled={isProcessingSystem}
+                            className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition-colors w-full flex items-center justify-center gap-2 disabled:opacity-70"
+                          >
+                              {isProcessingSystem ? <Loader2 size={18} className="animate-spin"/> : null}
+                              {isProcessingSystem ? 'Sedang Menghapus...' : 'Hapus Seluruh Data'}
+                          </button>
                       </div>
                   </div>
               </div>
@@ -305,25 +349,75 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
           {activeTab === 'help' && (
               <div className="space-y-6 animate-fade-in">
                   <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
-                      <HelpCircle size={32} className="text-indigo-600" />
+                      <BookOpen size={32} className="text-indigo-600" />
                       <div>
-                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pusat Bantuan</h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">Panduan penggunaan dan informasi sistem.</p>
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pusat Bantuan & Panduan</h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Pelajari cara menggunakan fitur aplikasi secara maksimal.</p>
                       </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                         <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-100 dark:border-slate-600">
                             <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">Role Anda: <span className="uppercase text-indigo-600">{currentUser.role}</span></h4>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
                                 Anda memiliki akses {currentUser.role === 'superadmin' ? 'Penuh (Full Access)' : 'Terbatas'} ke fitur sistem.
                             </p>
                         </div>
+                        <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                            <h4 className="font-bold text-indigo-800 dark:text-indigo-200 mb-2">Butuh Bantuan Teknis?</h4>
+                            <p className="text-sm text-indigo-600 dark:text-indigo-300">
+                                Hubungi IT Support: <strong>{settings.email}</strong> atau WhatsApp ke <strong>{settings.phone}</strong>
+                            </p>
+                        </div>
                   </div>
 
-                  <div className="mt-8 pt-6 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400">
-                      <p>Butuh bantuan teknis lebih lanjut?</p>
-                      <p className="font-medium text-slate-700 dark:text-slate-300">Hubungi IT Support: {settings.email}</p>
+                  {/* FAQ SECTIONS */}
+                  <div className="space-y-4">
+                      <h4 className="font-bold text-lg text-slate-800 dark:text-white border-l-4 border-indigo-500 pl-3">Booking & Transaksi</h4>
+                      <FaqItem 
+                        question="Bagaimana cara memasukkan Booking baru?" 
+                        answer="Masuk ke menu 'Booking & Jadwal', lalu klik tab 'Input Baru'. Isi data lengkap mulai dari tanggal sewa, pilih mobil yang tersedia (sistem akan otomatis mencegah bentrok), data pelanggan, hingga rincian pembayaran (DP)." 
+                      />
+                      <FaqItem 
+                        question="Apa itu fitur Anti-Bentrok Jadwal?" 
+                        answer="Sistem secara otomatis mengecek ketersediaan mobil. Jika mobil sudah dipesan pada tanggal/jam yang dipilih, mobil tersebut tidak akan muncul atau ditandai 'Bentrok' pada saat pemilihan unit, sehingga mencegah double booking." 
+                      />
+                      <FaqItem 
+                        question="Bagaimana cara mencetak Invoice atau Nota?" 
+                        answer="Setelah booking dibuat, cari booking tersebut di daftar. Klik tombol ikon 'Petir' (⚡) untuk mengunduh Invoice PDF resmi. Anda juga bisa klik ikon WhatsApp untuk mengirim rincian via chat." 
+                      />
+                      <FaqItem 
+                        question="Bagaimana mencatat pelunasan sewa?" 
+                        answer="Cari booking di daftar, jika status pembayaran belum lunas, akan muncul tombol 'Lunasi' berwarna hijau. Klik tombol tersebut, masukkan sisa pembayaran, dan simpan." 
+                      />
+
+                      <h4 className="font-bold text-lg text-slate-800 dark:text-white border-l-4 border-indigo-500 pl-3 mt-6">Armada & Driver</h4>
+                      <FaqItem 
+                        question="Bagaimana cara menambah Unit Mobil?" 
+                        answer="Masuk ke menu 'Armada Mobil', klik tombol 'Tambah Mobil'. Isi data mobil, plat nomor, upload foto, dan tentukan harga sewa dasar. Anda juga bisa mengaitkan mobil dengan Mitra pemilik jika mobil tersebut titipan." 
+                      />
+                      <FaqItem 
+                        question="Apa fungsi ID Perangkat GPS?" 
+                        answer="Jika mobil dipasangi GPS Tracker yang terintegrasi (misal Traccar), masukkan IMEI/ID perangkat di data mobil. Ini memungkinkan sistem menampilkan lokasi real-time di menu 'Tracking Unit'." 
+                      />
+                      <FaqItem 
+                        question="Bagaimana cara menghitung gaji driver?" 
+                        answer="Saat membuat booking dengan driver, sistem mencatat 'Fee Driver'. Di menu 'Data Driver' -> 'Riwayat', Anda bisa melihat total perjalanan dan mengunduh laporan bulanan untuk perhitungan gaji/komisi." 
+                      />
+
+                      <h4 className="font-bold text-lg text-slate-800 dark:text-white border-l-4 border-indigo-500 pl-3 mt-6">Keuangan & Laporan</h4>
+                      <FaqItem 
+                        question="Bagaimana cara mencatat pengeluaran operasional?" 
+                        answer="Masuk ke menu 'Keuangan' -> klik 'Catat Pengeluaran'. Pilih kategori (Bensin, Service, Kantor, dll), masukkan nominal, dan upload foto nota jika ada." 
+                      />
+                      <FaqItem 
+                        question="Apa bedanya status 'Paid' dan 'Pending'?" 
+                        answer="Status 'Paid' berarti uang sudah keluar/masuk kas. Status 'Pending' (Menunggu) digunakan untuk tagihan yang belum dibayar, misalnya gaji driver yang akan dibayar akhir bulan atau setoran mitra yang ditahan sementara." 
+                      />
+                      <FaqItem 
+                        question="Bagaimana cara melihat Laporan Laba/Rugi?" 
+                        answer="Masuk ke menu 'Laporan & Statistik'. Sistem otomatis menghitung Total Pemasukan (dari booking) dikurangi Total Pengeluaran. Anda bisa filter berdasarkan tanggal dan download PDF laporannya." 
+                      />
                   </div>
               </div>
           )}

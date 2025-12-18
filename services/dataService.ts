@@ -142,13 +142,14 @@ const syncToFirestore = async (key: string, data: any) => {
     }
 };
 
-export const setStoredData = (key: string, data: any) => {
+// Changed to ASYNC to ensure data is written before reload
+export const setStoredData = async (key: string, data: any) => {
     try {
         // 1. Simpan ke LocalStorage (Untuk performa UI instan)
         localStorage.setItem(key, JSON.stringify(data));
         
-        // 2. Sinkron ke Firebase di background
-        syncToFirestore(key, data);
+        // 2. Sinkron ke Firebase di background (Await to ensure completion)
+        await syncToFirestore(key, data);
     } catch (e) {
         console.error(`Error saving ${key} to localStorage`, e);
     }
@@ -181,7 +182,7 @@ export const initializeData = async () => {
     // 1. Cek Setting
     const hasSettings = localStorage.getItem(KEYS.SETTINGS);
     if (!hasSettings) {
-        setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
+        await setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
     }
 
     // 2. Integrasi Firebase
@@ -193,15 +194,11 @@ export const initializeData = async () => {
                 KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS
             ];
 
-            // Cek apakah Cloud Kosong? (Indikator: Cars collection kosong)
             const carCol = collection(db, KEYS.CARS);
             const carSnap = await getDocs(carCol);
 
             if (!carSnap.empty) {
-                // A. Cloud Ada Data -> SYNC DOWN (Cloud to Local)
-                // Ini memastikan aplikasi di device lain mendapat data terbaru
                 console.log("[Firebase] Found cloud data. Syncing DOWN...");
-                
                 await Promise.all(collectionsToSync.map(async (key) => {
                     const colRef = collection(db, key);
                     const snapshot = await getDocs(colRef);
@@ -210,16 +207,10 @@ export const initializeData = async () => {
                         localStorage.setItem(key, JSON.stringify(data));
                     }
                 }));
-                console.log("[Firebase] Download complete.");
-
             } else {
-                // B. Cloud Kosong -> Cek Local
                 console.log("[Firebase] Cloud is empty.");
                 const hasLocalCars = localStorage.getItem(KEYS.CARS);
-                
                 if (hasLocalCars) {
-                    // Local Ada Data -> SYNC UP (Local to Cloud)
-                    // Ini memperbaiki kasus user sudah pakai app, baru pasang firebase belakangan
                     console.log("[Firebase] Local data found. Syncing UP to cloud...");
                     for (const key of collectionsToSync) {
                         const localData = getStoredData(key, []);
@@ -227,75 +218,98 @@ export const initializeData = async () => {
                             await syncToFirestore(key, localData);
                         }
                     }
-                    console.log("[Firebase] Upload complete.");
                 } else {
-                    // C. Semua Kosong -> Generate Dummy -> SYNC UP
                     console.log("[Firebase] Fresh install. Generating dummy data...");
-                    const data = generateDummyDataObjects();
-                    setStoredData(KEYS.PARTNERS, data.partners);
-                    setStoredData(KEYS.DRIVERS, data.drivers);
-                    setStoredData(KEYS.CARS, data.cars);
-                    setStoredData(KEYS.CUSTOMERS, data.customers);
-                    setStoredData(KEYS.BOOKINGS, data.bookings);
-                    setStoredData(KEYS.TRANSACTIONS, data.transactions);
-                    setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+                    await generateDummyData();
                 }
             }
         } catch (e) {
             console.error("[Firebase] Initialization error (Check config/rules):", e);
         }
-    } else {
-        console.log("[Data] Running in Local Mode (Firebase not configured).");
-        // Fallback Local Only Initialization
-        const hasCars = localStorage.getItem(KEYS.CARS);
-        if (!hasCars) {
-            const data = generateDummyDataObjects();
-            setStoredData(KEYS.PARTNERS, data.partners);
-            setStoredData(KEYS.DRIVERS, data.drivers);
-            setStoredData(KEYS.CARS, data.cars);
-            setStoredData(KEYS.CUSTOMERS, data.customers);
-            setStoredData(KEYS.BOOKINGS, data.bookings);
-            setStoredData(KEYS.TRANSACTIONS, data.transactions);
-            setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
-        }
     }
     return true;
 };
 
-export const clearAllData = () => {
+// Changed to Async
+export const clearAllData = async () => {
     const keysToRemove = [KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS];
     
-    // Clear Local Storage
-    keysToRemove.forEach(k => {
+    // Clear All
+    await Promise.all(keysToRemove.map(async k => {
         localStorage.removeItem(k);
-        // Clear Firebase Collection (Trigger empty sync)
-        syncToFirestore(k, []); 
-    });
+        await syncToFirestore(k, []); 
+    }));
     
     window.location.reload();
 };
 
+// GENERATE REAL DUMMY DATA
 const generateDummyDataObjects = () => {
-    return { 
-        partners: [], 
-        drivers: [], 
-        cars: [], 
-        customers: [], 
-        bookings: [], 
-        transactions: [], 
-        highSeasons: [] 
-    };
+    const now = Date.now();
+    const today = new Date().toISOString().split('T')[0];
+    
+    const cars: Car[] = [
+        { id: 'c1', name: 'Toyota Avanza Veloz', plate: 'B 1234 ABC', type: 'MPV', pricing: {'12 Jam (Dalam Kota)': 350000, '24 Jam (Dalam Kota)': 500000, '24 Jam (Luar Kota)': 600000}, price12h: 350000, price24h: 500000, image: 'https://img.mobilmo.com/2019/01/16/f8286LtF/toyota-avanza-2019-3-e028.jpg', status: 'Available' },
+        { id: 'c2', name: 'Honda Brio RS', plate: 'B 5678 XYZ', type: 'City Car', pricing: {'12 Jam (Dalam Kota)': 300000, '24 Jam (Dalam Kota)': 400000, '24 Jam (Luar Kota)': 500000}, price12h: 300000, price24h: 400000, image: 'https://asset.honda-indonesia.com/2023/05/05/9670b30a-6029-430c-b24e-72b65727932d.jpg', status: 'Available' },
+        { id: 'c3', name: 'Toyota Innova Reborn', plate: 'D 9999 AA', type: 'MPV', pricing: {'12 Jam (Dalam Kota)': 500000, '24 Jam (Dalam Kota)': 750000, '24 Jam (Luar Kota)': 900000}, price12h: 500000, price24h: 750000, image: 'https://images.tokopedia.net/img/cache/700/VqbcmM/2022/8/20/47f73003-7303-4f96-b072-002d28743936.jpg', status: 'Available', partnerId: 'p1' },
+        { id: 'c4', name: 'Toyota Alphard', plate: 'B 1 BOS', type: 'Luxury', pricing: {'12 Jam (Dalam Kota)': 2500000, '24 Jam (Dalam Kota)': 3500000, '24 Jam (Luar Kota)': 4000000}, price12h: 2500000, price24h: 3500000, image: 'https://auto2000.co.id/berita-dan-tips/images/alphard-2023.jpg', status: 'Available' },
+    ];
+
+    const drivers: Driver[] = [
+        { id: 'd1', name: 'Budi Santoso', phone: '081234567890', dailyRate: 150000, status: 'Active', image: 'https://i.pravatar.cc/150?u=d1' },
+        { id: 'd2', name: 'Asep Saepul', phone: '081987654321', dailyRate: 175000, status: 'Active', image: 'https://i.pravatar.cc/150?u=d2' }
+    ];
+
+    const partners: Partner[] = [
+        { id: 'p1', name: 'Mitra Sejahtera', phone: '081233334444', splitPercentage: 70, image: 'https://i.pravatar.cc/150?u=p1' }
+    ];
+
+    const customers: Customer[] = [
+        { id: 'cust1', name: 'Rina Wati', phone: '085677778888', address: 'Jl. Melati No. 5' },
+        { id: 'cust2', name: 'PT. Maju Mundur', phone: '02155556666', address: 'Gedung Cyber Lt. 2' }
+    ];
+
+    const bookings: Booking[] = [
+        {
+            id: 'b1', carId: 'c1', customerId: 'cust1', customerName: 'Rina Wati', customerPhone: '085677778888',
+            startDate: `${today}T08:00:00`, endDate: `${today}T20:00:00`, packageType: '12 Jam (Dalam Kota)', destination: 'Dalam Kota',
+            basePrice: 350000, driverFee: 0, highSeasonFee: 0, deliveryFee: 50000, totalPrice: 400000, amountPaid: 200000,
+            status: BookingStatus.ACTIVE, paymentStatus: PaymentStatus.PARTIAL, notes: 'Jemput di bandara', createdAt: now - 86400000,
+            securityDepositType: 'Barang', securityDepositValue: 0, securityDepositDescription: 'KTP Asli'
+        },
+        {
+            id: 'b2', carId: 'c3', driverId: 'd1', customerId: 'cust2', customerName: 'PT. Maju Mundur', customerPhone: '02155556666',
+            startDate: `${today}T07:00:00`, endDate: `${today}T23:00:00`, packageType: '24 Jam (Luar Kota)', destination: 'Luar Kota',
+            basePrice: 900000, driverFee: 150000, highSeasonFee: 0, deliveryFee: 0, totalPrice: 1050000, amountPaid: 1050000,
+            status: BookingStatus.ACTIVE, paymentStatus: PaymentStatus.PAID, notes: 'Tujuan Bandung', createdAt: now - 172800000,
+            securityDepositType: 'Uang', securityDepositValue: 1000000, securityDepositDescription: 'Transfer BCA'
+        }
+    ];
+
+    const transactions: Transaction[] = [
+        { id: 'tx1', date: today, amount: 200000, type: 'Income', category: 'Rental Payment', description: 'DP Booking Rina Wati', bookingId: 'b1', status: 'Paid' },
+        { id: 'tx2', date: today, amount: 1050000, type: 'Income', category: 'Rental Payment', description: 'Pelunasan PT. Maju Mundur', bookingId: 'b2', status: 'Paid' },
+        { id: 'tx3', date: today, amount: 50000, type: 'Expense', category: 'BBM', description: 'Isi Bensin Awal Avanza', relatedId: 'd1', status: 'Paid' }
+    ];
+
+    return { cars, drivers, partners, customers, bookings, transactions, highSeasons: [] };
 };
 
-export const generateDummyData = () => {
+// Changed to Async
+export const generateDummyData = async () => {
     const data = generateDummyDataObjects();
-    setStoredData(KEYS.PARTNERS, data.partners);
-    setStoredData(KEYS.DRIVERS, data.drivers);
-    setStoredData(KEYS.CARS, data.cars);
-    setStoredData(KEYS.CUSTOMERS, data.customers);
-    setStoredData(KEYS.BOOKINGS, data.bookings);
-    setStoredData(KEYS.TRANSACTIONS, data.transactions);
-    setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+    
+    // Write all to storage and wait for completion
+    await Promise.all([
+        setStoredData(KEYS.PARTNERS, data.partners),
+        setStoredData(KEYS.DRIVERS, data.drivers),
+        setStoredData(KEYS.CARS, data.cars),
+        setStoredData(KEYS.CUSTOMERS, data.customers),
+        setStoredData(KEYS.BOOKINGS, data.bookings),
+        setStoredData(KEYS.TRANSACTIONS, data.transactions),
+        setStoredData(KEYS.HIGH_SEASONS, data.highSeasons)
+    ]);
+
     window.location.reload();
 };
 
