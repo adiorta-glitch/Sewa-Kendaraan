@@ -293,8 +293,9 @@ const Dashboard = () => {
       {/* Chart Section */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm min-w-0">
         <h3 className="font-bold text-slate-800 mb-4">Grafik Pendapatan (7 Hari)</h3>
-        <div className="h-64 w-full relative">
-            <ResponsiveContainer width="99%" height="100%">
+        {/* Fix: Explicit height and width for Recharts container */}
+        <div className="h-64 w-full relative min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                     <defs>
                         <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">

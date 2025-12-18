@@ -1,6 +1,11 @@
 
 import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 
 // Configuration from user
@@ -20,18 +25,15 @@ let analytics: any = null;
 try {
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    analytics = getAnalytics(app);
     
-    // Enable offline persistence
-    // This allows the app to work offline and sync when online
-    enableIndexedDbPersistence(db).catch((err) => {
-        if (err.code === 'failed-precondition') {
-            console.warn("Multiple tabs open, persistence disabled.");
-        } else if (err.code === 'unimplemented') {
-            console.warn("Browser doesn't support persistence.");
-        }
+    // Initialize Firestore with new Persistence Settings (removes deprecation warning)
+    db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager()
+        })
     });
+
+    analytics = getAnalytics(app);
     
     console.log("[Firebase] Initialized successfully with provided config.");
 } catch (error) {
