@@ -11,8 +11,7 @@ const INITIAL_USERS: User[] = [
     email: 'super@brc.com',
     phone: '081200000000',
     role: 'superadmin',
-    image: 'https://i.pravatar.cc/150?u=super',
-    hasFingerprint: true
+    image: 'https://i.pravatar.cc/150?u=super'
   },
   {
     id: 'u2',
@@ -22,8 +21,7 @@ const INITIAL_USERS: User[] = [
     email: 'admin@brc.com',
     phone: '081211111111',
     role: 'admin',
-    image: 'https://i.pravatar.cc/150?u=admin',
-    hasFingerprint: false
+    image: 'https://i.pravatar.cc/150?u=admin'
   },
   {
     id: 'u3',
@@ -34,8 +32,7 @@ const INITIAL_USERS: User[] = [
     phone: '08122334455',
     role: 'driver',
     linkedDriverId: 'd1', // Links to Driver ID d1
-    image: 'https://i.pravatar.cc/150?u=d1',
-    hasFingerprint: true
+    image: 'https://i.pravatar.cc/150?u=d1'
   },
   {
     id: 'u4',
@@ -95,20 +92,6 @@ export const login = (identifier: string, password: string): User | null => {
   return null;
 };
 
-// Simulate Biometric Login
-export const loginWithBiometric = (userId: string): User | null => {
-  initAuth();
-  const users = getStoredData<User[]>('users', INITIAL_USERS);
-  const user = users.find(u => u.id === userId && u.hasFingerprint);
-  
-  if (user) {
-    const { password, ...userWithoutPassword } = user;
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-    return userWithoutPassword as User;
-  }
-  return null;
-}
-
 export const logout = () => {
   localStorage.removeItem('currentUser');
 };
@@ -121,12 +104,6 @@ export const getCurrentUser = (): User | null => {
 export const getUsers = (): User[] => {
     initAuth();
     return getStoredData<User[]>('users', []);
-}
-
-// Get list of users who have enabled fingerprint (for Login screen selection)
-export const getBiometricUsers = (): User[] => {
-    initAuth();
-    return getStoredData<User[]>('users', []).filter(u => u.hasFingerprint);
 }
 
 export const saveUser = (user: User) => {

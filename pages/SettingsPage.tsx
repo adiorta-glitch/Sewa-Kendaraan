@@ -1,34 +1,28 @@
+
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppSettings, User } from '../types';
-import { getStoredData, setStoredData, DEFAULT_SETTINGS } from '../services/dataService';
+import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
-import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Fingerprint, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
 interface Props {
-  currentUser: User;
+    currentUser: User;
 }
 
 const SettingsPage: React.FC<Props> = ({ currentUser }) => {
+  const [searchParams] = useSearchParams();
   const isSuperAdmin = currentUser.role === 'superadmin';
   const isAdmin = currentUser.role === 'admin';
-  const isDriver = currentUser.role === 'driver';
-  const isPartner = currentUser.role === 'partner';
-
-  // --- 1. HELPER: NORMALIZE DATA (PENGAMAN) ---
-  // Fungsi ini mengubah Object/Null menjadi Array agar aplikasi tidak crash
-  const normalizeData = (data: any) => {
-    if (!data) return []; 
-    if (Array.isArray(data)) return data; 
-    if (typeof data === 'object') return Object.values(data); 
-    return [];
-  };
-
-  // Default tab based on role
-  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'general' : 'help');
+  
+  // Initialize tab from URL param or default
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isSuperAdmin ? 'general' : 'help'));
+  
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [users, setUsers] = useState<User[]>([]);
   const [isSaved, setIsSaved] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Users Form
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -39,28 +33,25 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState('admin');
   const [userImage, setUserImage] = useState<string | null>(null);
-  const [enableFingerprint, setEnableFingerprint] = useState(false);
   
   // Master Data State
   const [newCategory, setNewCategory] = useState('');
   const [newPackage, setNewPackage] = useState('');
 
   useEffect(() => {
-    // Load Settings & Sanitize Arrays
-    const rawSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-    setSettings({
-        ...rawSettings,
-        // Pastikan kategori dan paket selalu Array
-        carCategories: normalizeData(rawSettings.carCategories),
-        rentalPackages: normalizeData(rawSettings.rentalPackages)
-    });
-
-    // Load Users & Sanitize
-    const rawUsers = getUsers();
-    setUsers(normalizeData(rawUsers)); // <--- PENGAMAN DI SINI
+    setSettings(getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS));
+    setUsers(getUsers());
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  // Sync tab with URL param changes
+  useEffect(() => {
+      const tabParam = searchParams.get('tab');
+      if (tabParam) {
+          setActiveTab(tabParam);
+      }
+  }, [searchParams]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setSettings(prev => ({ ...prev, [name]: value }));
     setIsSaved(false);
@@ -84,17 +75,34 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   };
 
   // User Management
-  const handleUserImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUserImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 500000) { 
-        alert("Ukuran gambar user maks 500KB.");
-        return;
+      setIsUploading(true);
+      try {
+        const compressed = await compressImage(file);
+        setUserImage(compressed);
+      } catch (e) {
+        alert("Gagal memproses gambar.");
+      } finally {
+        setIsUploading(false);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => setUserImage(reader.result as string);
-      reader.readAsDataURL(file);
     }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          setIsUploading(true);
+          try {
+             const compressed = await compressImage(file);
+             setSettings(prev => ({ ...prev, logoUrl: compressed }));
+          } catch(e) {
+              alert("Gagal upload logo.");
+          } finally {
+              setIsUploading(false);
+          }
+      }
   };
 
   const handleEditUser = (u: User) => {
@@ -106,7 +114,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setPhone(u.phone || '');
       setRole(u.role);
       setUserImage(u.image || null);
-      setEnableFingerprint(u.hasFingerprint || false);
       
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -119,7 +126,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setEmail(''); 
       setPhone(''); 
       setUserImage(null); 
-      setEnableFingerprint(false);
       setRole('admin');
   };
 
@@ -135,50 +141,41 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
           email,
           phone,
           role: role as any,
-          image: userImage,
-          hasFingerprint: enableFingerprint
+          image: userImage
       };
 
       saveUser(userPayload);
-      // Refresh list dengan normalizeData
-      setUsers(normalizeData(getUsers())); 
+      setUsers(getUsers());
       resetUserForm();
   };
 
   const handleDeleteUser = (id: string) => {
       if (id === currentUser.id) return alert("Tidak bisa menghapus akun sendiri!");
-      if (confirm("Hapus user ini?")) {
+      if (confirm("Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus user ini secara permanen? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.")) {
           deleteUser(id);
-          // Refresh list dengan normalizeData
-          setUsers(normalizeData(getUsers())); 
+          setUsers(getUsers());
           if (editingUserId === id) resetUserForm();
       }
   };
 
-  // Master Data Management
-  // Gunakan '|| []' untuk memastikan carCategories dianggap array jika state corrupt
   const addCategory = () => {
-      const currentCats = normalizeData(settings.carCategories);
-      if(newCategory && !currentCats.includes(newCategory)) {
-          setSettings(prev => ({...prev, carCategories: [...currentCats, newCategory]}));
+      if(newCategory && !settings.carCategories.includes(newCategory)) {
+          setSettings(prev => ({...prev, carCategories: [...prev.carCategories, newCategory]}));
           setNewCategory('');
       }
   };
   const removeCategory = (cat: string) => {
-      const currentCats = normalizeData(settings.carCategories);
-      setSettings(prev => ({...prev, carCategories: currentCats.filter((c: string) => c !== cat)}));
+      setSettings(prev => ({...prev, carCategories: prev.carCategories.filter(c => c !== cat)}));
   };
 
   const addPackage = () => {
-      const currentPkgs = normalizeData(settings.rentalPackages);
-      if(newPackage && !currentPkgs.includes(newPackage)) {
-          setSettings(prev => ({...prev, rentalPackages: [...currentPkgs, newPackage]}));
+      if(newPackage && !settings.rentalPackages.includes(newPackage)) {
+          setSettings(prev => ({...prev, rentalPackages: [...prev.rentalPackages, newPackage]}));
           setNewPackage('');
       }
   };
   const removePackage = (pkg: string) => {
-      const currentPkgs = normalizeData(settings.rentalPackages);
-      setSettings(prev => ({...prev, rentalPackages: currentPkgs.filter((p: string) => p !== pkg)}));
+      setSettings(prev => ({...prev, rentalPackages: prev.rentalPackages.filter(p => p !== pkg)}));
   };
 
   const THEME_OPTIONS = [
@@ -200,105 +197,96 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
         {isSaved && <span className="bg-green-100 text-green-700 px-4 py-2 rounded-lg font-medium animate-pulse">Tersimpan! Refreshing...</span>}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {isSuperAdmin && (
               <>
-                <button onClick={() => setActiveTab('general')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${activeTab === 'general' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Umum & Invoice</button>
-                <button onClick={() => setActiveTab('appearance')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${activeTab === 'appearance' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Tampilan</button>
-                <button onClick={() => setActiveTab('master')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${activeTab === 'master' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Kategori & Paket</button>
-                <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Manajemen User</button>
+                <button onClick={() => setActiveTab('general')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'general' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Umum & Invoice</button>
+                <button onClick={() => setActiveTab('gps')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'gps' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Integrasi GPS</button>
+                <button onClick={() => setActiveTab('appearance')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'appearance' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Tampilan</button>
+                <button onClick={() => setActiveTab('master')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'master' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Kategori & Paket</button>
+                <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Manajemen User</button>
               </>
           )}
-          <button onClick={() => setActiveTab('help')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${activeTab === 'help' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Bantuan</button>
+          <button onClick={() => setActiveTab('help')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'help' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Pusat Bantuan</button>
       </div>
 
       <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
           
-          {/* HELP TAB (Visible to ALL roles) */}
-          {activeTab === 'help' && (
-              <div className="space-y-6">
-                  <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
-                      <HelpCircle size={32} className="text-indigo-600" />
+          {/* GPS INTEGRATION TAB */}
+          {activeTab === 'gps' && isSuperAdmin && (
+              <div className="space-y-6 animate-fade-in">
+                   <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
+                      <MapPin size={32} className="text-indigo-600" />
                       <div>
-                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Panduan Penggunaan</h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">Berikut adalah panduan fitur yang tersedia untuk Role: <span className="font-bold uppercase text-indigo-700 dark:text-indigo-400">{currentUser.role}</span></p>
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Integrasi GPS Tracker</h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Hubungkan aplikasi dengan server GPS (Traccar/Custom) untuk tracking real-time.</p>
                       </div>
                   </div>
 
-                  {/* CONTENT FOR DRIVER */}
-                  {isDriver && (
-                      <div className="space-y-4">
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">1. Menu Tugas Saya</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Melihat daftar perjalanan yang ditugaskan kepada Anda. Klik tombol "List" atau "Map" untuk melihat detail tugas dan lokasi.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">2. Menu Reimbursement</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Digunakan untuk mengajukan klaim biaya operasional seperti BBM, Tol, Parkir, atau Makan. Upload foto nota sebagai bukti.</p>
-                          </div>
+                  <form onSubmit={handleSave} className="space-y-4">
+                      <div>
+                          <label className="block text-sm font-medium mb-1 dark:text-slate-200">Penyedia Layanan GPS</label>
+                          <select name="gpsProvider" value={settings.gpsProvider} onChange={handleChange} className="w-full border rounded p-2">
+                              <option value="Simulation">Mode Simulasi (Demo)</option>
+                              <option value="Traccar">Traccar (Open Source)</option>
+                              <option value="Custom">Custom API</option>
+                          </select>
+                          <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">
+                              {settings.gpsProvider === 'Simulation' ? 'Menggunakan data acak untuk demo.' : 
+                               settings.gpsProvider === 'Traccar' ? 'Menggunakan API Traccar untuk mengambil posisi device.' : 'Menggunakan endpoint JSON kustom.'}
+                          </p>
                       </div>
-                  )}
 
-                  {/* CONTENT FOR PARTNER */}
-                  {isPartner && (
-                      <div className="space-y-4">
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">1. Menu Pendapatan Saya</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Melihat ringkasan total unit mobil Anda, estimasi pendapatan bagi hasil, dan riwayat transaksi sewa.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">2. Menu Unit Saya</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Melihat daftar mobil yang Anda titipkan. Anda bisa melihat status ketersediaan mobil.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">3. Menu Riwayat Setoran</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Memantau status setoran bagi hasil yang dikirim oleh Admin. Status bisa berupa "Pending" (Belum cair) atau "Paid" (Sudah cair).</p>
-                          </div>
+                      {settings.gpsProvider !== 'Simulation' && (
+                          <>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 dark:text-slate-200">URL Server API</label>
+                                <input name="gpsApiUrl" value={settings.gpsApiUrl || ''} onChange={handleChange} className="w-full border rounded p-2" placeholder="https://demo.traccar.org/api" />
+                                <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Pastikan URL dapat diakses (CORS Enabled jika beda domain).</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 dark:text-slate-200">API Token / Auth</label>
+                                <input name="gpsApiToken" type="password" value={settings.gpsApiToken || ''} onChange={handleChange} className="w-full border rounded p-2" placeholder="Bearer Token atau Basic Auth" />
+                            </div>
+                          </>
+                      )}
+
+                      <div className="pt-4 border-t dark:border-slate-700">
+                          <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold">Simpan Konfigurasi GPS</button>
                       </div>
-                  )}
+                  </form>
+              </div>
+          )}
 
-                  {/* CONTENT FOR ADMIN & SUPERADMIN */}
-                  {(isAdmin || isSuperAdmin) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">1. Dashboard</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Ringkasan unit ready, pendapatan harian, unit sedang jalan, dan kalender booking.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">2. Booking & Jadwal</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Membuat reservasi baru, mengecek ketersediaan mobil/driver, melakukan checklist kendaraan, dan mencetak Invoice/Kontrak.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">3. Tracking</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Memantau lokasi unit yang sedang jalan secara real-time (Simulasi) dan melihat detail driver yang bertugas.</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">4. Keuangan & Statistik</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-300">Mencatat pengeluaran operasional, gaji, setoran mitra, dan melihat grafik analisis bisnis bulanan.</p>
-                          </div>
-                          {isSuperAdmin && (
-                              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-900/50 col-span-full">
-                                  <h4 className="font-bold text-indigo-800 dark:text-indigo-300 mb-2">5. Fitur Super Admin</h4>
-                                  <p className="text-sm text-indigo-700 dark:text-indigo-200">
-                                      - <strong>Pengaturan Umum:</strong> Ubah Logo, Nama Perusahaan, Footer Invoice.<br/>
-                                      - <strong>Master Data:</strong> Tambah Kategori Mobil dan Paket Sewa.<br/>
-                                      - <strong>Manajemen User:</strong> Tambah/Edit/Hapus akun untuk Staff, Driver, dan Mitra.<br/>
-                                      - <strong>Hapus Data:</strong> Akses penuh untuk menghapus data booking, armada, dll.
-                                  </p>
-                              </div>
-                          )}
-                        </div>
-                  )}
+          {/* HELP TAB */}
+          {activeTab === 'help' && (
+              <div className="space-y-6 animate-fade-in">
+                  <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
+                      <HelpCircle size={32} className="text-indigo-600" />
+                      <div>
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pusat Bantuan</h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Panduan penggunaan dan informasi sistem.</p>
+                      </div>
+                  </div>
                   
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-100 dark:border-slate-600">
+                            <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">Role Anda: <span className="uppercase text-indigo-600">{currentUser.role}</span></h4>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Anda memiliki akses {currentUser.role === 'superadmin' ? 'Penuh (Full Access)' : 'Terbatas'} ke fitur sistem.
+                            </p>
+                        </div>
+                  </div>
+
                   <div className="mt-8 pt-6 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400">
                       <p>Butuh bantuan teknis lebih lanjut?</p>
-                      <p className="font-medium text-slate-700 dark:text-slate-300">Hubungi IT Support: support@leodigitalsolution.com</p>
+                      <p className="font-medium text-slate-700 dark:text-slate-300">Hubungi IT Support: {settings.email}</p>
                   </div>
               </div>
           )}
 
           {activeTab === 'appearance' && isSuperAdmin && (
-              <div className="space-y-8">
+              <div className="space-y-8 animate-fade-in">
                   <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
                       <Palette size={32} className="text-indigo-600" />
                       <div>
@@ -307,7 +295,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                       </div>
                   </div>
                   
-                  {/* Color Picker */}
                   <div>
                       <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-4">Warna Tema Utama</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -326,10 +313,9 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                       </div>
                   </div>
 
-                  {/* Dark Mode Toggle */}
                   <div className="pt-6 border-t dark:border-slate-700">
-                        <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-4">Mode Tampilan</h4>
-                        <div className="flex items-center gap-4">
+                       <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-4">Mode Tampilan</h4>
+                       <div className="flex items-center gap-4">
                             <button
                                 onClick={() => !settings.darkMode && toggleDarkMode()}
                                 className={`flex-1 p-4 rounded-xl border-2 flex items-center justify-center gap-3 transition-all ${!settings.darkMode ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 font-bold' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}
@@ -342,43 +328,42 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             >
                                 <Moon size={24} /> Mode Gelap (Dark)
                             </button>
-                        </div>
+                       </div>
                   </div>
 
                   <div className="pt-6 border-t dark:border-slate-700">
-                      <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Pengaturan Tampilan</button>
+                     <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Pengaturan Tampilan</button>
                   </div>
               </div>
           )}
 
           {activeTab === 'general' && isSuperAdmin && (
-             <form onSubmit={handleSave} className="space-y-6">
-                 {/* Only SuperAdmin can change Company Logo/Details? Assuming Yes for safety */}
+             <form onSubmit={handleSave} className="space-y-6 animate-fade-in">
                  <div className="flex items-center gap-6 pb-6 border-b dark:border-slate-700">
                      <div className="w-20 h-20 border rounded-lg p-2 flex items-center justify-center bg-white">
                          <Logo src={settings.logoUrl} />
                      </div>
                      <div>
-                         <label className="block text-sm font-medium mb-2 dark:text-slate-200">Ganti Logo (Maks 500KB)</label>
-                         <input disabled={!isSuperAdmin} type="file" accept="image/*" className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" onChange={(e) => {
-                             const file = e.target.files?.[0];
-                             if (file) {
-                                 if (file.size > 500000) {
-                                     alert("Ukuran file terlalu besar! Maksimal 500KB agar aplikasi berjalan lancar.");
-                                     return;
-                                 }
-                                 const reader = new FileReader();
-                                 reader.onloadend = () => setSettings(prev => ({ ...prev, logoUrl: reader.result as string }));
-                                 reader.readAsDataURL(file);
-                             }
-                         }} />
+                         <label className="block text-sm font-medium mb-2 dark:text-slate-200">Ganti Logo (Otomatis Dikompres)</label>
+                         <input 
+                             disabled={!isSuperAdmin} 
+                             type="file" 
+                             accept="image/*" 
+                             className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" 
+                             onChange={handleLogoUpload} 
+                         />
+                         {isUploading && <p className="text-xs text-indigo-600 mt-1">Mengupload...</p>}
                      </div>
                  </div>
                  
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
-                         <label className="block text-sm font-medium mb-1 dark:text-slate-200">Nama Perusahaan</label>
+                         <label className="block text-sm font-medium mb-1 dark:text-slate-200">Nama Perusahaan (Lengkap)</label>
                          <input disabled={!isSuperAdmin} name="companyName" value={settings.companyName} onChange={handleChange} className="w-full border rounded p-2" />
+                     </div>
+                     <div>
+                         <label className="block text-sm font-medium mb-1 dark:text-slate-200">Nama Display Aplikasi (Singkat)</label>
+                         <input disabled={!isSuperAdmin} name="displayName" value={settings.displayName} onChange={handleChange} className="w-full border rounded p-2" placeholder="Contoh: BRC" />
                      </div>
                      <div>
                          <label className="block text-sm font-medium mb-1 dark:text-slate-200">Tagline</label>
@@ -397,7 +382,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                          <input disabled={!isSuperAdmin} name="email" value={settings.email} onChange={handleChange} className="w-full border rounded p-2" />
                      </div>
                      
-                     {/* INVOICE TEXT SETTINGS */}
                      <div className="md:col-span-2 pt-4 border-t mt-2 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2"><FileText size={18}/> Konten Invoice PDF</h3>
                      </div>
@@ -434,12 +418,12 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                         />
                      </div>
                  </div>
-                 {isSuperAdmin && <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold">Simpan Pengaturan</button>}
+                 {isSuperAdmin && <button type="submit" disabled={isUploading} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50">Simpan Pengaturan</button>}
              </form>
           )}
 
           {activeTab === 'master' && isSuperAdmin && (
-              <div className="space-y-8">
+              <div className="space-y-8 animate-fade-in">
                   {/* Car Categories */}
                   <div>
                       <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-800 dark:text-slate-200"><List size={20}/> Kategori Mobil</h3>
@@ -453,8 +437,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                           <button onClick={addCategory} className="bg-indigo-600 text-white px-4 rounded font-bold hover:bg-indigo-700">Tambah</button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                          {/* Pastikan menggunakan normalizeData agar tidak error jika data kosong */}
-                          {normalizeData(settings.carCategories).map((cat: string) => (
+                          {settings.carCategories.map(cat => (
                               <span key={cat} className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border border-slate-200 dark:border-slate-600">
                                   {cat}
                                   <button onClick={() => removeCategory(cat)} className="text-slate-400 hover:text-red-600"><X size={14}/></button>
@@ -475,7 +458,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                           <button onClick={addPackage} className="bg-indigo-600 text-white px-4 rounded font-bold hover:bg-indigo-700">Tambah</button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                          {normalizeData(settings.rentalPackages).map((pkg: string) => (
+                          {settings.rentalPackages.map(pkg => (
                               <span key={pkg} className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border border-slate-200 dark:border-slate-600">
                                   {pkg}
                                   <button onClick={() => removePackage(pkg)} className="text-slate-400 hover:text-red-600"><X size={14}/></button>
@@ -485,13 +468,13 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                   </div>
                   
                   <div className="pt-6 border-t dark:border-slate-700">
-                      <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Master Data</button>
+                     <button onClick={handleSave} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold w-full">Simpan Master Data</button>
                   </div>
               </div>
           )}
 
           {activeTab === 'users' && isSuperAdmin && (
-              <div className="space-y-8">
+              <div className="space-y-8 animate-fade-in">
                   <div className="bg-slate-50 dark:bg-slate-700 p-6 rounded-lg border border-slate-100 dark:border-slate-600">
                       <div className="flex justify-between items-center mb-4">
                           <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">{editingUserId ? 'Edit User' : 'Tambah User Baru'}</h3>
@@ -503,6 +486,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                       </div>
                       
                       <form onSubmit={handleSaveUser} className="space-y-4">
+                          {/* ... Form fields ... */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Nama Lengkap</label>
@@ -535,10 +519,9 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             </div>
                           </div>
                           
-                          {/* Photo and Biometric */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                              <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Foto Profil</label>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Foto Profil {isUploading && '(Kompresi...)'}</label>
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 bg-slate-200 dark:bg-slate-600 rounded-full flex items-center justify-center overflow-hidden border border-slate-300 dark:border-slate-500">
                                         {userImage ? (
@@ -548,16 +531,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                     <input type="file" accept="image/*" onChange={handleUserImageUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
                                 </div>
                              </div>
-                             
-                             <div className="flex items-center">
-                                <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-800 border p-3 rounded-lg w-full hover:bg-slate-50 dark:hover:bg-slate-700 dark:border-slate-600">
-                                    <input type="checkbox" checked={enableFingerprint} onChange={e => setEnableFingerprint(e.target.checked)} className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500" />
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1"><Fingerprint size={16}/> Aktifkan Login Fingerprint</span>
-                                        <span className="text-[10px] text-slate-500 dark:text-slate-400">User bisa login tanpa password</span>
-                                    </div>
-                                </label>
-                             </div>
                           </div>
 
                           <div className="flex gap-2 mt-2">
@@ -566,7 +539,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                       Batal
                                   </button>
                               )}
-                              <button type="submit" className={`flex-1 ${editingUserId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded font-bold flex items-center justify-center gap-2`}>
+                              <button disabled={isUploading} type="submit" className={`flex-1 ${editingUserId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded font-bold flex items-center justify-center gap-2 disabled:opacity-50`}>
                                     {editingUserId ? <Save size={18} /> : <Plus size={18}/>}
                                     {editingUserId ? 'Simpan Perubahan' : 'Tambah User'}
                               </button>
@@ -584,13 +557,11 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                     <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Akun</th>
                                     <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Kontak</th>
                                     <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Role</th>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Fitur Login</th>
                                     <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y dark:divide-slate-700">
-                                {/* users yang di-map di sini sudah dijamin Array oleh normalizeData, jadi aman */}
-                                {normalizeData(users).map((u: User) => (
+                                {users.map(u => (
                                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                         <td className="px-4 py-2 text-sm">
                                             <div className="flex items-center gap-3">
@@ -610,15 +581,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                             <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
                                                 {u.role === 'admin' ? 'User' : u.role}
                                             </span>
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            {u.hasFingerprint ? (
-                                                <span className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold w-fit">
-                                                    <Fingerprint size={12}/> Biometrik Aktif
-                                                </span>
-                                            ) : (
-                                                <span className="text-xs text-slate-400">Password Only</span>
-                                            )}
                                         </td>
                                         <td className="px-4 py-2 text-right">
                                             <div className="flex items-center justify-end gap-1">

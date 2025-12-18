@@ -1,18 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
-import { Transaction, Booking, Car, Customer } from '../types';
+import { Transaction, Booking, Car, Customer, Driver } from '../types';
 import { getStoredData } from '../services/dataService';
+import { generateStatisticsPDF } from '../services/pdfService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { ArrowUpRight, ArrowDownLeft, Wallet, Calendar, MapPin, Package } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, Calendar, Package, Download, User as UserIcon, CheckCircle, Clock, CalendarDays, ShieldCheck, DollarSign, Users, Car as CarIcon } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
 const StatisticsPage = () => {
-  // --- 1. STATE INITIALIZATION (SAFE) ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
 
   // Filter State
   const [startDate, setStartDate] = useState('');
@@ -21,116 +23,136 @@ const StatisticsPage = () => {
   const currentUser = getCurrentUser();
   const isPartner = currentUser?.role === 'partner';
 
-  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
-  const normalizeData = (data: any) => {
-    if (!data) return []; 
-    if (Array.isArray(data)) return data; 
-    if (typeof data === 'object') return Object.values(data); 
-    return [];
-  };
-
   useEffect(() => {
-    // Load Data & Sanitize
-    const rawTransactions = getStoredData<Transaction[]>('transactions', []);
-    const rawBookings = getStoredData<Booking[]>('bookings', []);
-    const rawCars = getStoredData<Car[]>('cars', []);
-    const rawCustomers = getStoredData<Customer[]>('customers', []);
+    setTransactions(getStoredData<Transaction[]>('transactions', []));
+    setBookings(getStoredData<Booking[]>('bookings', []));
+    setCars(getStoredData<Car[]>('cars', []));
+    setCustomers(getStoredData<Customer[]>('customers', []));
+    setDrivers(getStoredData<Driver[]>('drivers', []));
 
-    setTransactions(normalizeData(rawTransactions));
-    setBookings(normalizeData(rawBookings));
-    setCars(normalizeData(rawCars));
-    setCustomers(normalizeData(rawCustomers));
-
-    // Default to current month
     const date = new Date();
     const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
     const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    // Handle timezone offset simply
-    const toISODate = (d: Date) => d.toISOString().split('T')[0];
     
-    setStartDate(toISODate(firstDay));
-    setEndDate(toISODate(lastDay));
+    const toLocalISO = (d: Date) => {
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    setStartDate(toLocalISO(firstDay));
+    setEndDate(toLocalISO(lastDay));
   }, []);
 
-  // Filter Data Logic
   const filterDateRange = (dateStr: string) => {
       if(!startDate || !endDate) return true;
-      return dateStr >= startDate && dateStr <= endDate;
+      const d = dateStr.split('T')[0];
+      return d >= startDate && d <= endDate;
   };
 
-  // Gunakan data yang sudah dinormalisasi dari state
-  const safeTransactions = normalizeData(transactions);
-  const safeBookings = normalizeData(bookings);
-  const safeCars = normalizeData(cars);
+  let filteredTransactions = transactions.filter(t => filterDateRange(t.date));
+  let filteredBookings = bookings.filter(b => filterDateRange(b.startDate));
 
-  let filteredTransactions = safeTransactions.filter(t => filterDateRange(t.date));
-  let filteredBookings = safeBookings.filter(b => filterDateRange(b.startDate.split('T')[0]));
-
-  // PARTNER SPECIFIC LOGIC
-  if (isPartner && currentUser?.linkedPartnerId) {
-      // 1. Filter Transactions: Only 'Setor Mitra' related to this partner
+  if (isPartner && currentUser.linkedPartnerId) {
       filteredTransactions = filteredTransactions.filter(t => 
           t.category === 'Setor Mitra' && t.relatedId === currentUser.linkedPartnerId
       );
-
-      // 2. Filter Bookings: Only cars owned by this partner
-      const partnerCarIds = safeCars.filter(c => c.partnerId === currentUser.linkedPartnerId).map(c => c.id);
+      const partnerCarIds = cars.filter(c => c.partnerId === currentUser.linkedPartnerId).map(c => c.id);
       filteredBookings = filteredBookings.filter(b => partnerCarIds.includes(b.carId));
   }
 
-  // Calculate Financials
-  // If Partner: Income = Setoran, Expense = 0 (or specific expenses if tracked)
-  // If Admin: Income = Income Type, Expense = Expense Type
   const income = isPartner 
-    ? filteredTransactions.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) // Partner receives money
-    : filteredTransactions.filter(t => t.type === 'Income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    ? filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0)
+    : filteredTransactions.filter(t => t.type === 'Income').reduce((acc, curr) => acc + curr.amount, 0);
 
   const expense = isPartner
-    ? 0 // Usually partners don't track expense here unless system updated
-    : filteredTransactions.filter(t => t.type === 'Expense').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    ? 0 
+    : filteredTransactions
+        .filter(t => t.type === 'Expense' && t.status === 'Paid')
+        .reduce((acc, curr) => acc + curr.amount, 0);
     
   const profit = income - expense;
 
-  // Chart Data: Histogram Income vs Expense per day
-  const getDailyHistogram = () => {
-      if (!startDate || !endDate) return [];
+  // --- DATA CALCULATIONS ---
 
+  const statusCounts = {
+      Booked: filteredBookings.filter(b => b.status === 'Booked').length,
+      Active: filteredBookings.filter(b => b.status === 'Active').length,
+      Completed: filteredBookings.filter(b => b.status === 'Completed').length
+  };
+
+  const getOwnershipStats = () => {
+      let company = 0;
+      let partner = 0;
+      filteredBookings.forEach(b => {
+          const car = cars.find(c => c.id === b.carId);
+          if (car) {
+              if (car.partnerId) partner++;
+              else company++;
+          }
+      });
+      return [
+          { name: 'Mobil Perusahaan', value: company },
+          { name: 'Mobil Mitra', value: partner }
+      ].filter(d => d.value > 0);
+  };
+
+  const getDriverStats = () => {
+      const counts: {[key: string]: number} = {};
+      filteredBookings.forEach(b => {
+          if (b.driverId) {
+              const driverName = drivers.find(d => d.id === b.driverId)?.name || 'Unknown Driver';
+              counts[driverName] = (counts[driverName] || 0) + 1;
+          }
+      });
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a,b) => b.value - a.value)
+        .slice(0, 5);
+  };
+
+  const getPaymentStats = () => {
+      const paid = filteredBookings.filter(b => b.paymentStatus === 'Lunas').length;
+      const unpaid = filteredBookings.filter(b => b.paymentStatus !== 'Lunas').length;
+      return [
+          { name: 'Lunas', value: paid },
+          { name: 'Belum Lunas/DP', value: unpaid }
+      ].filter(d => d.value > 0);
+  };
+
+  const getDailyHistogram = () => {
       const daysMap = new Map();
       const start = new Date(startDate);
       const end = new Date(endDate);
-      
-      // Loop safe date
       for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const dayStr = d.toISOString().split('T')[0];
-          daysMap.set(dayStr, { name: new Date(dayStr).getDate(), Pemasukan: 0, Pengeluaran: 0, Bersih: 0 });
+          daysMap.set(dayStr, { name: d.getDate().toString(), Pemasukan: 0, Pengeluaran: 0 });
       }
-
       filteredTransactions.forEach(t => {
-          // Hanya proses jika t.date valid
-          if (!t.date) return;
-          const dayStr = t.date.split('T')[0]; // Pastikan format YYYY-MM-DD
-          
+          const dayStr = t.date.split('T')[0]; 
           if(daysMap.has(dayStr)) {
               const current = daysMap.get(dayStr);
-              const amount = Number(t.amount) || 0;
-
-              if (isPartner) {
-                  // For Partner, transaction is income
-                  current.Pemasukan += amount;
-              } else {
-                  if(t.type === 'Income') current.Pemasukan += amount;
-                  else current.Pengeluaran += amount;
+              if (isPartner) current.Pemasukan += t.amount;
+              else {
+                  if(t.type === 'Income') current.Pemasukan += t.amount;
+                  else if (t.status === 'Paid') current.Pengeluaran += t.amount;
               }
           }
       });
-
-      return Array.from(daysMap.values()).map(d => ({
-          ...d,
-          Bersih: d.Pemasukan - d.Pengeluaran
-      }));
+      return Array.from(daysMap.values());
   };
 
-  // Chart Data: Top Customers (By Booking Count)
+  const getTopFleet = () => {
+      const counts: {[key: string]: number} = {};
+      filteredBookings.forEach(b => {
+          const carName = cars.find(c => c.id === b.carId)?.name || 'Unknown';
+          counts[carName] = (counts[carName] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a,b) => b.value - a.value)
+        .slice(0, 5);
+  };
+
   const getTopCustomers = () => {
       const counts: {[key: string]: number} = {};
       filteredBookings.forEach(b => {
@@ -143,211 +165,239 @@ const StatisticsPage = () => {
         .slice(0, 5);
   };
 
-  // Chart Data: Top Fleet
-  const getTopFleet = () => {
-      const counts: {[key: string]: number} = {};
-      filteredBookings.forEach(b => {
-          const carName = safeCars.find(c => c.id === b.carId)?.name || 'Unknown';
-          counts[carName] = (counts[carName] || 0) + 1;
-      });
-      return Object.entries(counts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a,b) => b.value - a.value)
-        .slice(0, 5);
-  };
-
-  const getDestinationStats = () => {
-      const counts: {[key: string]: number} = {};
-      filteredBookings.forEach(b => {
-          const dest = b.destination || 'Dalam Kota';
-          counts[dest] = (counts[dest] || 0) + 1;
-      });
-      return Object.entries(counts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a,b) => b.value - a.value);
-  };
-
   const getPackageStats = () => {
       const counts: {[key: string]: number} = {};
       filteredBookings.forEach(b => {
           const pkg = b.packageType || 'Unknown';
           counts[pkg] = (counts[pkg] || 0) + 1;
       });
-      return Object.entries(counts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a,b) => b.value - a.value);
+      return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  };
+
+  const handleDownloadPDF = () => {
+      generateStatisticsPDF(
+          income, 
+          expense, 
+          profit, 
+          startDate, 
+          endDate, 
+          getTopFleet(), 
+          getTopCustomers(),
+          statusCounts,
+          getOwnershipStats(),
+          getDriverStats(),
+          getPaymentStats(),
+          getPackageStats(),
+          getDailyHistogram()
+      );
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800">{isPartner ? 'Statistik Mitra' : 'Statistik Bisnis'}</h2>
-          <p className="text-slate-500">Analisis pendapatan{isPartner ? ' unit saya' : ', pelanggan, dan armada'}.</p>
+          <h2 className="text-3xl font-bold text-slate-800">Laporan & Statistik</h2>
+          <p className="text-slate-500">Analisis menyeluruh performa bisnis rental Anda.</p>
         </div>
         
-        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-            <Calendar size={18} className="text-slate-500 ml-2" />
-            <div className="flex items-center gap-2">
-                <input type="date" className="border-none text-sm focus:ring-0 text-slate-600 w-full" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-2">
+            <button onClick={handleDownloadPDF} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold shadow-sm">
+                 <Download size={18} /> Export PDF
+            </button>
+            <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                <Calendar size={18} className="text-slate-500 ml-2" />
+                <input type="date" className="border-none text-sm focus:ring-0 text-slate-600" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 <span className="text-slate-400">-</span>
-                <input type="date" className="border-none text-sm focus:ring-0 text-slate-600 w-full" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                <input type="date" className="border-none text-sm focus:ring-0 text-slate-600" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
         </div>
       </div>
 
-      {/* Financial Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6">
-          <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 md:gap-3 mb-2">
-                  <div className="p-1.5 md:p-2 bg-green-100 text-green-600 rounded-lg"><ArrowDownLeft size={16} className="md:w-5 md:h-5" /></div>
-                  <span className="text-[10px] md:text-sm font-medium text-slate-500 leading-tight">Total Pemasukan (Gross)</span>
+      {/* 1. Summary Status Boxes */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-l-blue-500 border border-slate-200 flex items-center justify-between">
+              <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Booked (Booking)</p>
+                  <h3 className="text-2xl font-bold text-blue-600">{statusCounts.Booked}</h3>
               </div>
-              <p className="text-lg md:text-2xl font-bold text-slate-800 truncate">Rp {income.toLocaleString('id-ID')}</p>
+              <CalendarDays className="text-blue-100 w-10 h-10" />
           </div>
-          <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 md:gap-3 mb-2">
-                  <div className="p-1.5 md:p-2 bg-red-100 text-red-600 rounded-lg"><ArrowUpRight size={16} className="md:w-5 md:h-5" /></div>
-                  <span className="text-[10px] md:text-sm font-medium text-slate-500 leading-tight">Total Pengeluaran</span>
+          <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-l-green-500 border border-slate-200 flex items-center justify-between">
+              <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Active (Jalan)</p>
+                  <h3 className="text-2xl font-bold text-green-600">{statusCounts.Active}</h3>
               </div>
-              <p className="text-lg md:text-2xl font-bold text-slate-800 truncate">Rp {expense.toLocaleString('id-ID')}</p>
+              <Clock className="text-green-100 w-10 h-10" />
           </div>
-          <div className={`bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm col-span-2 md:col-span-1 ${isPartner ? 'hidden md:block' : ''}`}>
-              <div className="flex items-center gap-2 md:gap-3 mb-2">
-                  <div className="p-1.5 md:p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Wallet size={16} className="md:w-5 md:h-5" /></div>
-                  <span className="text-[10px] md:text-sm font-medium text-slate-500 leading-tight">Profit Bersih (Net)</span>
+          <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-l-slate-500 border border-slate-200 flex items-center justify-between">
+              <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Completed (Selesai)</p>
+                  <h3 className="text-2xl font-bold text-slate-600">{statusCounts.Completed}</h3>
               </div>
-              <p className={`text-lg md:text-2xl font-bold truncate ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Rp {profit.toLocaleString('id-ID')}</p>
+              <CheckCircle className="text-slate-200 w-10 h-10" />
           </div>
       </div>
 
-      {/* Histogram */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-bold text-lg mb-4 text-slate-800">Grafik {isPartner ? 'Setoran' : 'Pendapatan'} Harian</h3>
-          <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={getDailyHistogram()}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" />
-                      <YAxis tickFormatter={(val) => `${val/1000}k`} />
-                      <Tooltip formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} />
-                      <Legend />
-                      <Bar dataKey="Pemasukan" fill="#22c55e" radius={[4, 4, 0, 0]} name={isPartner ? "Setoran" : "Pemasukan"} />
-                      {!isPartner && <Bar dataKey="Pengeluaran" fill="#ef4444" radius={[4, 4, 0, 0]} name="Pengeluaran" />}
-                  </BarChart>
-              </ResponsiveContainer>
+      {/* 2. GROUP: PENDAPATAN */}
+      <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+              <DollarSign className="text-indigo-600" size={24} />
+              <h3 className="text-xl font-bold text-slate-800">Grup: Pendapatan</h3>
           </div>
-      </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-green-100 text-green-600 rounded-lg"><ArrowDownLeft size={20} /></div>
+                      <span className="text-sm font-medium text-slate-500">Pemasukan</span>
+                  </div>
+                  <p className="text-2xl font-bold text-slate-800 truncate">Rp {income.toLocaleString('id-ID')}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-red-100 text-red-600 rounded-lg"><ArrowUpRight size={20} /></div>
+                      <span className="text-sm font-medium text-slate-500">Pengeluaran</span>
+                  </div>
+                  <p className="text-2xl font-bold text-slate-800 truncate">Rp {expense.toLocaleString('id-ID')}</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-2 md:col-span-1">
+                  <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Wallet size={20} /></div>
+                      <span className="text-sm font-medium text-slate-500">Profit Bersih</span>
+                  </div>
+                  <p className={`text-2xl font-bold truncate ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Rp {profit.toLocaleString('id-ID')}</p>
+              </div>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Customer Stats - Hide for Partner as they might not care about customer details as much, but we'll leave it for now or replace with car stats */}
-          {!isPartner && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h3 className="font-bold text-lg mb-4 text-slate-800">Top 5 Pelanggan Teraktif</h3>
-                <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={getTopCustomers()} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-                            <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
-                            <Tooltip cursor={{fill: 'transparent'}} />
-                            <Bar dataKey="value" fill="#8884d8" radius={[0, 4, 4, 0]} barSize={20} name="Jumlah Booking">
-                                {getTopCustomers().map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-          )}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+                  <h4 className="font-bold text-slate-700 mb-4">Grafik Pendapatan Harian</h4>
+                  <div className="h-80 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={getDailyHistogram()}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="name" />
+                              <YAxis tickFormatter={(val) => `${val/1000}k`} />
+                              <Tooltip formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} />
+                              <Legend />
+                              <Bar dataKey="Pemasukan" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                              {!isPartner && <Bar dataKey="Pengeluaran" fill="#ef4444" radius={[4, 4, 0, 0]} />}
+                          </BarChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+                  <h4 className="font-bold text-slate-700 mb-4">Status Pembayaran</h4>
+                  <div className="h-80 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                              <Pie
+                                  data={getPaymentStats()}
+                                  cx="50%" cy="50%"
+                                  outerRadius={80}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                  label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                              >
+                                  <Cell fill="#22c55e" />
+                                  <Cell fill="#ef4444" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend verticalAlign="bottom" height={36}/>
+                          </PieChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+          </div>
+      </section>
 
-          {/* Fleet Stats - Very relevant for Partner */}
-          <div className={`bg-white p-6 rounded-xl shadow-sm border border-slate-200 ${isPartner ? 'col-span-full' : ''}`}>
-              <h3 className="font-bold text-lg mb-4 text-slate-800">Top Unit Terlaris</h3>
-              <div className="h-72">
+      {/* 3. GROUP: PELANGGAN */}
+      <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+              <Users className="text-indigo-600" size={24} />
+              <h3 className="text-xl font-bold text-slate-800">Grup: Pelanggan</h3>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+              <h4 className="font-bold text-slate-700 mb-4">Top 5 Pelanggan Teraktif</h4>
+              <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <Pie
-                              data={getTopFleet()}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                              outerRadius={80}
-                              fill="#8884d8"
-                              dataKey="value"
-                          >
-                              {getTopFleet().map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                          </Pie>
+                      <BarChart data={getTopCustomers()} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                          <XAxis type="number" hide />
+                          <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
                           <Tooltip />
-                      </PieChart>
+                          <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={30} name="Jumlah Booking" />
+                      </BarChart>
                   </ResponsiveContainer>
               </div>
           </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex items-center gap-2 mb-4">
-                  <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><MapPin size={20} /></div>
-                  <h3 className="font-bold text-lg text-slate-800">Distribusi Tujuan</h3>
+      {/* 4. GROUP: ARMADA */}
+      <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+              <CarIcon className="text-indigo-600" size={24} />
+              <h3 className="text-xl font-bold text-slate-800">Grup: Armada & Driver</h3>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+                  <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Package size={18}/> Top Unit Terlaris</h4>
+                  <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                              <Pie
+                                  data={getTopFleet()}
+                                  cx="50%" cy="50%"
+                                  outerRadius={80}
+                                  dataKey="value"
+                                  label={({ name, percent }) => `${name.split(' ')[0]} ${(percent * 100).toFixed(0)}%`}
+                              >
+                                  {getTopFleet().map((_, index) => (
+                                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                  ))}
+                              </Pie>
+                              <Tooltip />
+                          </PieChart>
+                      </ResponsiveContainer>
+                  </div>
               </div>
-              <div className="h-72">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+                  <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><ShieldCheck size={18}/> Transaksi Perusahaan vs Mitra</h4>
+                  <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                              <Pie
+                                  data={getOwnershipStats()}
+                                  cx="50%" cy="50%"
+                                  outerRadius={80}
+                                  dataKey="value"
+                                  label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                              >
+                                  <Cell fill="#3b82f6" />
+                                  <Cell fill="#f59e0b" />
+                              </Pie>
+                              <Tooltip />
+                              <Legend verticalAlign="bottom" height={36}/>
+                          </PieChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
+              <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserIcon size={18}/> Performa Driver (Jumlah Trip)</h4>
+              <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <Pie
-                              data={getDestinationStats()}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                              outerRadius={80}
-                              fill="#8884d8"
-                              dataKey="value"
-                          >
-                              {getDestinationStats().map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                          </Pie>
+                      <BarChart data={getDriverStats()}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="name" tick={{fontSize: 10}} />
+                          <YAxis />
                           <Tooltip />
-                          <Legend verticalAlign="bottom" height={36}/>
-                      </PieChart>
+                          <Bar dataKey="value" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Trip" />
+                      </BarChart>
                   </ResponsiveContainer>
               </div>
           </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex items-center gap-2 mb-4">
-                  <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Package size={20} /></div>
-                  <h3 className="font-bold text-lg text-slate-800">Paket Sewa</h3>
-              </div>
-              <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <Pie
-                              data={getPackageStats()}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                              outerRadius={80}
-                              fill="#82ca9d"
-                              dataKey="value"
-                          >
-                              {getPackageStats().map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend verticalAlign="bottom" height={36}/>
-                      </PieChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
-      </div>
+      </section>
     </div>
   );
 };

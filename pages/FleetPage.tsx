@@ -1,19 +1,20 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Car, Partner, User, AppSettings } from '../types';
-import { getStoredData, setStoredData, DEFAULT_SETTINGS, exportToCSV, processCSVImport, mergeData } from '../services/dataService';
-import { Plus, Trash2, Edit2, User as UserIcon, Upload, Image as ImageIcon, X, Download, FileSpreadsheet } from 'lucide-react';
+import { getStoredData, setStoredData, DEFAULT_SETTINGS, exportToCSV, processCSVImport, mergeData, compressImage } from '../services/dataService';
+import { Plus, Trash2, Edit2, User as UserIcon, Upload, Image as ImageIcon, X, Download, FileSpreadsheet, MapPin } from 'lucide-react';
 
 interface Props {
-  currentUser: User;
+    currentUser: User;
 }
 
 const FleetPage: React.FC<Props> = ({ currentUser }) => {
-  // --- 1. STATE INITIALIZATION ---
   const [cars, setCars] = useState<Car[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCar, setEditingCar] = useState<Car | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,40 +25,19 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
   const [prices, setPrices] = useState<{[key: string]: number}>({});
   const [partnerId, setPartnerId] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [gpsDeviceId, setGpsDeviceId] = useState('');
 
   const isSuperAdmin = currentUser.role === 'superadmin';
   const isPartnerView = currentUser.role === 'partner';
 
-  // --- 2. HELPER: NORMALIZE DATA (PENGAMAN) ---
-  const normalizeData = (data: any) => {
-    if (!data) return []; 
-    if (Array.isArray(data)) return data; 
-    if (typeof data === 'object') return Object.values(data); 
-    return [];
-  };
-
   useEffect(() => {
-    // Load Data & Sanitize immediately
-    const rawCars = getStoredData<Car[]>('cars', []);
-    const rawPartners = getStoredData<Partner[]>('partners', []);
+    setCars(getStoredData<Car[]>('cars', []));
+    setPartners(getStoredData<Partner[]>('partners', []));
     const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
-
-    setCars(normalizeData(rawCars));
-    setPartners(normalizeData(rawPartners));
-    
-    // Pastikan array di dalam settings juga aman
-    setSettings({
-        ...loadedSettings,
-        carCategories: normalizeData(loadedSettings.carCategories),
-        rentalPackages: normalizeData(loadedSettings.rentalPackages)
-    });
+    setSettings(loadedSettings);
   }, []);
 
   const openModal = (car?: Car) => {
-    // Ambil kategori pertama yang aman
-    const safeCategories = normalizeData(settings.carCategories);
-    const defaultCategory = safeCategories.length > 0 ? safeCategories[0] : 'MPV';
-
     if (car) {
         setEditingCar(car);
         setName(car.name);
@@ -65,6 +45,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
         setType(car.type);
         setPartnerId(car.partnerId || '');
         setImagePreview(car.image);
+        setGpsDeviceId(car.gpsDeviceId || '');
         if (car.pricing) {
             setPrices(car.pricing);
         } else {
@@ -77,9 +58,10 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
         setEditingCar(null);
         setName('');
         setPlate('');
-        setType(defaultCategory);
+        setType(settings.carCategories[0] || 'MPV');
         setPartnerId(isPartnerView ? (currentUser.linkedPartnerId || '') : ''); 
         setImagePreview(null);
+        setGpsDeviceId('');
         setPrices({});
     }
     setIsModalOpen(true);
@@ -92,18 +74,18 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
       }));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1000000) { 
-        alert("Ukuran gambar terlalu besar (Maks 1MB).");
-        return;
+      setIsUploading(true);
+      try {
+        const compressed = await compressImage(file);
+        setImagePreview(compressed);
+      } catch (err) {
+        alert("Gagal memproses gambar. Coba gunakan foto lain.");
+      } finally {
+        setIsUploading(false);
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -123,16 +105,15 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
         price24h: prices['24 Jam (Dalam Kota)'] || 0,
         partnerId: partnerId || null,
         status: 'Available',
-        image: finalImage
+        image: finalImage,
+        gpsDeviceId: gpsDeviceId || undefined
     };
 
-    const currentCars = normalizeData(cars);
     let updatedCars;
-
     if (editingCar) {
-        updatedCars = currentCars.map(c => c.id === editingCar.id ? newCar : c);
+        updatedCars = cars.map(c => c.id === editingCar.id ? newCar : c);
     } else {
-        updatedCars = [...currentCars, newCar];
+        updatedCars = [...cars, newCar];
     }
 
     setCars(updatedCars);
@@ -141,11 +122,12 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
   };
 
   const handleDelete = (id: string) => {
-      if(confirm('Apakah Anda yakin ingin menghapus data mobil ini?')) {
-          const currentCars = normalizeData(cars);
-          const updated = currentCars.filter(c => c.id !== id);
-          setCars(updated);
-          setStoredData('cars', updated);
+      if(window.confirm('Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus data armada mobil ini secara permanen? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.')) {
+          setCars(prev => {
+              const updated = prev.filter(c => c.id !== id);
+              setStoredData('cars', updated);
+              return updated;
+          });
       }
   };
 
@@ -158,11 +140,9 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
       return car.price24h || 0;
   };
 
-  // Safe Rendering Variables
-  const safeCars = normalizeData(cars);
   const displayedCars = isPartnerView 
-      ? safeCars.filter(c => c.partnerId === currentUser.linkedPartnerId) 
-      : safeCars;
+      ? cars.filter(c => c.partnerId === currentUser.linkedPartnerId) 
+      : cars;
 
   const handleExport = () => exportToCSV(displayedCars, 'Data_Armada_BRC');
   
@@ -220,6 +200,11 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                             <UserIcon size={12} /> Mitra
                         </div>
                     )}
+                    {car.gpsDeviceId && (
+                        <div className="absolute bottom-2 left-2 bg-slate-900/80 text-green-400 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm z-10">
+                            <MapPin size={10} /> GPS Connected
+                        </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </div>
                 <div className="p-5">
@@ -269,7 +254,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                   <form onSubmit={handleSave} className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-4">
-                              <label className="block text-sm font-medium text-slate-700">Foto Kendaraan</label>
+                              <label className="block text-sm font-medium text-slate-700">Foto Kendaraan {isUploading && '(Mengompres...)'}</label>
                               <div className="relative w-full aspect-video bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center overflow-hidden hover:bg-slate-50 transition-colors group">
                                   {imagePreview ? (
                                       <>
@@ -287,7 +272,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                                       <div className="text-center p-4 pointer-events-none">
                                           <ImageIcon className="mx-auto h-10 w-10 text-slate-400 mb-2" />
                                           <p className="text-sm text-slate-500">Upload foto mobil</p>
-                                          <p className="text-xs text-slate-400 mt-1">Format: JPG, PNG (Max 1MB)</p>
+                                          <p className="text-xs text-slate-400 mt-1">Format: JPG, PNG (Otomatis Dikompres)</p>
                                       </div>
                                   )}
                                   <input 
@@ -313,7 +298,7 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700">Tipe / Kategori</label>
                                     <select className="w-full border border-slate-300 rounded-lg p-2.5 mt-1" value={type} onChange={e => setType(e.target.value)}>
-                                        {normalizeData(settings.carCategories).map((cat: string) => (
+                                        {settings.carCategories.map(cat => (
                                             <option key={cat} value={cat}>{cat}</option>
                                         ))}
                                     </select>
@@ -323,10 +308,24 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                                   <label className="block text-sm font-medium text-slate-700">Pemilik Unit (Mitra)</label>
                                   <select disabled={isPartnerView} className="w-full border border-slate-300 rounded-lg p-2.5 mt-1 disabled:bg-slate-100" value={partnerId} onChange={e => setPartnerId(e.target.value)}>
                                       <option value="">Milik Perusahaan (Sendiri)</option>
-                                      {normalizeData(partners).map((p: Partner) => (
+                                      {partners.map(p => (
                                           <option key={p.id} value={p.id}>{p.name} (Bagi: {p.splitPercentage}%)</option>
                                       ))}
                                   </select>
+                              </div>
+                              {/* GPS Hardware ID Field */}
+                              <div>
+                                  <label className="block text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <MapPin size={14} className="text-indigo-600"/> ID Perangkat GPS (IMEI)
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    placeholder="Contoh: 123456789012345" 
+                                    className="w-full border border-slate-300 rounded-lg p-2.5 mt-1 bg-slate-50 font-mono text-sm" 
+                                    value={gpsDeviceId} 
+                                    onChange={e => setGpsDeviceId(e.target.value)} 
+                                  />
+                                  <p className="text-[10px] text-slate-500 mt-1">Kosongkan jika mobil tidak dipasang GPS.</p>
                               </div>
                           </div>
                       </div>
@@ -334,33 +333,28 @@ const FleetPage: React.FC<Props> = ({ currentUser }) => {
                       <div className="pt-4 border-t border-slate-100">
                           <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2 border-b pb-2 text-indigo-700 border-indigo-100">Pengaturan Harga Sewa</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
-                            {/* normalizeData settings.rentalPackages */}
-                            {normalizeData(settings.rentalPackages).length > 0 ? (
-                                normalizeData(settings.rentalPackages).map((pkg: string) => (
-                                    <div key={pkg}>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">{pkg}</label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
-                                            <input 
-                                                type="number" 
-                                                className="w-full border border-slate-300 rounded-lg p-2.5 pl-10 focus:ring-1 focus:ring-indigo-500"
-                                                value={prices[pkg] || ''} 
-                                                onChange={e => handlePriceChange(pkg, Number(e.target.value))} 
-                                                placeholder="0"
-                                            />
-                                        </div>
+                            {settings.rentalPackages.map(pkg => (
+                                <div key={pkg}>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">{pkg}</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2.5 text-slate-500 text-sm">Rp</span>
+                                        <input 
+                                            type="number" 
+                                            className="w-full border border-slate-300 rounded-lg p-2.5 pl-10 focus:ring-1 focus:ring-indigo-500"
+                                            value={prices[pkg] || ''} 
+                                            onChange={e => handlePriceChange(pkg, Number(e.target.value))} 
+                                            placeholder="0"
+                                        />
                                     </div>
-                                ))
-                            ) : (
-                                <p className="col-span-2 text-sm text-red-500 italic">Belum ada Paket Sewa yang diatur di menu Pengaturan.</p>
-                            )}
+                                </div>
+                            ))}
                           </div>
                       </div>
 
                       <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
                           <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-                          <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-0.5">
-                              {editingCar ? 'Simpan Perubahan' : 'Simpan Mobil Baru'}
+                          <button disabled={isUploading} type="submit" className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-0.5 disabled:opacity-50">
+                              {isUploading ? 'Memproses...' : (editingCar ? 'Simpan Perubahan' : 'Simpan Mobil Baru')}
                           </button>
                       </div>
                   </form>

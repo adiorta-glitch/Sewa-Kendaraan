@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction, Driver, User, Partner } from '../types';
 import { getStoredData, setStoredData, exportToCSV } from '../services/dataService';
@@ -18,7 +17,6 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   const [partners, setPartners] = useState<Partner[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const currentUser = getCurrentUser();
-  const isSuperAdmin = currentUser?.role === 'superadmin';
 
   // Filter State
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -174,7 +172,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   };
 
   const handleDelete = (id: string) => {
-      if (window.confirm('Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus data transaksi ini secara permanen? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.')) {
+      if (window.confirm('Apakah Anda yakin ingin menghapus data transaksi ini?')) {
           const allTx = getStoredData<Transaction[]>('transactions', []);
           const updatedStorage = allTx.filter(t => t.id !== id);
           setStoredData('transactions', updatedStorage);
@@ -258,7 +256,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
         
         <div className="flex flex-wrap gap-2 items-center">
             {!isDriverView && !isPartnerView && (
-                <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full md:w-auto">
+                <div className="hidden md:flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
                     <span className="text-sm font-bold text-slate-700 px-2 flex items-center gap-1"><Filter size={14}/> Filter:</span>
                     <input type="date" className="border rounded px-2 py-1 text-sm text-slate-600" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                     <span className="text-slate-400">-</span>
@@ -383,11 +381,9 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
                                                 <button onClick={() => handleEdit(t)} className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100" title="Edit">
                                                     <Edit2 size={16}/>
                                                 </button>
-                                                {isSuperAdmin && (
-                                                    <button onClick={() => handleDelete(t.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100" title="Hapus">
-                                                        <Trash2 size={16}/>
-                                                    </button>
-                                                )}
+                                                <button onClick={() => handleDelete(t.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100" title="Hapus">
+                                                    <Trash2 size={16}/>
+                                                </button>
                                             </div>
                                         </td>
                                     )}

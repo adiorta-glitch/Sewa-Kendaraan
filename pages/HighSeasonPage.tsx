@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { HighSeason, User } from '../types';
 import { getStoredData, setStoredData } from '../services/dataService';
 import { Plus, Trash2, Calendar } from 'lucide-react';
 
 interface Props {
-  currentUser: User;
+    currentUser: User;
 }
 
 const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
@@ -19,18 +20,8 @@ const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
 
   const isSuperAdmin = currentUser.role === 'superadmin';
 
-  // --- 1. HELPER: NORMALIZE DATA (PENGAMAN) ---
-  const normalizeData = (data: any) => {
-    if (!data) return []; 
-    if (Array.isArray(data)) return data; 
-    if (typeof data === 'object') return Object.values(data); 
-    return [];
-  };
-
   useEffect(() => {
-    // Load & Sanitize Data
-    const rawData = getStoredData<HighSeason[]>('highSeasons', []);
-    setHighSeasons(normalizeData(rawData));
+    setHighSeasons(getStoredData<HighSeason[]>('highSeasons', []));
   }, []);
 
   const handleSave = (e: React.FormEvent) => {
@@ -49,10 +40,7 @@ const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
         priceIncrease: Number(priceIncrease)
     };
 
-    // Pastikan highSeasons adalah array sebelum di-spread
-    const currentSeasons = normalizeData(highSeasons);
-    const updated = [...currentSeasons, newSeason];
-    
+    const updated = [...highSeasons, newSeason];
     setHighSeasons(updated);
     setStoredData('highSeasons', updated);
     setIsModalOpen(false);
@@ -62,16 +50,14 @@ const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
   };
 
   const handleDelete = (id: string) => {
-      // Pastikan highSeasons adalah array sebelum di-filter
-      const currentSeasons = normalizeData(highSeasons);
-      const updated = currentSeasons.filter(h => h.id !== id);
-      
-      setHighSeasons(updated);
-      setStoredData('highSeasons', updated);
+      if(confirm('Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus data High Season ini? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.')) {
+          setHighSeasons(prev => {
+              const updated = prev.filter(h => h.id !== id);
+              setStoredData('highSeasons', updated);
+              return updated;
+          });
+      }
   };
-
-  // Safe Rendering Variable
-  const safeHighSeasons = normalizeData(highSeasons);
 
   return (
     <div className="space-y-6">
@@ -96,7 +82,7 @@ const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
                   </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                  {safeHighSeasons.map(hs => (
+                  {highSeasons.map(hs => (
                       <tr key={hs.id}>
                           <td className="px-6 py-4 font-medium text-slate-900">{hs.name}</td>
                           <td className="px-6 py-4 text-sm text-slate-600">
@@ -115,7 +101,7 @@ const HighSeasonPage: React.FC<Props> = ({ currentUser }) => {
                           </td>
                       </tr>
                   ))}
-                  {safeHighSeasons.length === 0 && (
+                  {highSeasons.length === 0 && (
                       <tr><td colSpan={4} className="text-center py-8 text-slate-500">Belum ada event High Season aktif.</td></tr>
                   )}
               </tbody>

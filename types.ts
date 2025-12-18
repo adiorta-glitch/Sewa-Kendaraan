@@ -29,11 +29,11 @@ export interface User {
   
   // New Profile Features
   image?: string | null;
-  hasFingerprint?: boolean;
 }
 
 export interface AppSettings {
   companyName: string;
+  displayName: string; // New: Short Display Name
   tagline: string;
   address: string;
   phone: string;
@@ -56,6 +56,11 @@ export interface AppSettings {
   // Master Data
   carCategories: string[];
   rentalPackages: string[];
+
+  // GPS Integration
+  gpsProvider: 'Simulation' | 'Traccar' | 'Custom';
+  gpsApiUrl?: string;
+  gpsApiToken?: string; // Basic Auth or Bearer Token
 }
 
 export interface Customer {
@@ -107,6 +112,9 @@ export interface Car {
   image: string;
   partnerId?: string | null;
   status: 'Available' | 'Unavailable';
+
+  // GPS Integration
+  gpsDeviceId?: string; // IMEI or Unique ID in GPS System
 }
 
 export interface VehicleChecklist {
@@ -157,14 +165,20 @@ export interface Booking {
   driverFee: number;
   highSeasonFee: number;
   deliveryFee: number;
-  overtimeFee?: number; // New: Denda Keterlambatan
+  overtimeFee?: number; // Denda Keterlambatan
+  extraCost?: number; // New: Biaya Tambahan (BBM, Kerusakan, dll)
+  extraCostDescription?: string; // New: Keterangan Biaya Tambahan
   
   totalPrice: number;
   amountPaid: number;
   
   status: BookingStatus;
   paymentStatus: PaymentStatus;
-  notes: string;
+  
+  notes: string; // Internal/General Note
+  customerNote?: string; // Catatan khusus di Nota
+  driverNote?: string;   // Catatan khusus di SPJ Driver
+
   createdAt: number;
 }
 
