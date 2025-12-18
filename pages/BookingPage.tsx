@@ -674,17 +674,17 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-slate-900 rounded-2xl p-6 text-white space-y-3 shadow-2xl relative overflow-hidden">
-                                <h5 className="font-black text-[10px] uppercase tracking-widest text-indigo-400">Rincian Estimasi</h5>
-                                <div className="space-y-1 text-xs font-medium border-b border-white/10 pb-3">
-                                    <div className="flex justify-between text-slate-400"><span>Sewa Unit ({durationDays} hr)</span><span>Rp {pricing.basePrice.toLocaleString()}</span></div>
-                                    {pricing.driverFee > 0 && <div className="flex justify-between text-slate-400"><span>Driver ({durationDays} hr)</span><span>Rp {pricing.driverFee.toLocaleString()}</span></div>}
-                                    {pricing.highSeasonFee > 0 && <div className="flex justify-between text-orange-400"><span>High Season</span><span>Rp {pricing.highSeasonFee.toLocaleString()}</span></div>}
-                                    {pricing.deliveryFee > 0 && <div className="flex justify-between text-slate-400"><span>Antar/Jemput</span><span>Rp {pricing.deliveryFee.toLocaleString()}</span></div>}
-                                    {overtimeFee > 0 && <div className="flex justify-between text-red-400"><span>Biaya Overtime</span><span>Rp {overtimeFee.toLocaleString()}</span></div>}
-                                    {extraCost > 0 && <div className="flex justify-between text-orange-300"><span>Biaya Extra</span><span>Rp {extraCost.toLocaleString()}</span></div>}
+                            <div className="bg-indigo-600 rounded-2xl p-6 text-white space-y-3 shadow-2xl relative overflow-hidden">
+                                <h5 className="font-black text-[10px] uppercase tracking-widest text-white/80">Rincian Sewa</h5>
+                                <div className="space-y-1 text-xs font-medium border-b border-white/20 pb-3">
+                                    <div className="flex justify-between text-white/90"><span>Sewa Unit ({durationDays} hr)</span><span>Rp {pricing.basePrice.toLocaleString()}</span></div>
+                                    {pricing.driverFee > 0 && <div className="flex justify-between text-white/90"><span>Driver ({durationDays} hr)</span><span>Rp {pricing.driverFee.toLocaleString()}</span></div>}
+                                    {pricing.highSeasonFee > 0 && <div className="flex justify-between text-orange-200"><span>High Season</span><span>Rp {pricing.highSeasonFee.toLocaleString()}</span></div>}
+                                    {pricing.deliveryFee > 0 && <div className="flex justify-between text-white/90"><span>Antar/Jemput</span><span>Rp {pricing.deliveryFee.toLocaleString()}</span></div>}
+                                    {overtimeFee > 0 && <div className="flex justify-between text-red-200"><span>Overdue (Denda)</span><span>Rp {overtimeFee.toLocaleString()}</span></div>}
+                                    {extraCost > 0 && <div className="flex justify-between text-orange-200"><span>Biaya Extra</span><span>Rp {extraCost.toLocaleString()}</span></div>}
                                 </div>
-                                <div className="flex justify-between font-black text-lg text-indigo-300"><span>TOTAL</span><span>Rp {pricing.totalPrice.toLocaleString()}</span></div>
+                                <div className="flex justify-between font-black text-lg text-white"><span>TOTAL</span><span>Rp {pricing.totalPrice.toLocaleString()}</span></div>
                             </div>
                         </div>
                     </section>
@@ -706,60 +706,33 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             </div>
                         </div>
                     </section>
-                    <section className="space-y-5 bg-red-50/30 p-6 rounded-2xl border border-red-100 relative">
-                        <div className="flex justify-between items-center border-b border-red-200 pb-3">
-                            <h4 className="font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest text-xs">
-                                <History size={18} className="text-red-600"/> 4. Pengembalian Unit
-                            </h4>
-                            <div className="flex gap-2">
-                                 <button 
-                                    type="button"
-                                    onClick={() => {
-                                        setActualReturnDate(endDate);
-                                        setActualReturnTime(endTime);
-                                    }}
-                                    className="text-[10px] bg-white border border-red-200 text-red-600 px-2 py-1 rounded hover:bg-red-50 font-bold transition-colors"
-                                >
-                                    Sesuai Jadwal
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={() => {
-                                        const now = new Date();
-                                        setActualReturnDate(now.toISOString().split('T')[0]);
-                                        setActualReturnTime(now.toTimeString().slice(0,5));
-                                    }}
-                                    className="text-[10px] bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700 font-bold transition-colors shadow-sm"
-                                >
-                                    Set Sekarang
-                                </button>
-                            </div>
-                        </div>
+                    <section className="space-y-5 bg-red-50/30 p-6 rounded-2xl border border-red-100">
+                        <h4 className="font-black text-slate-800 flex items-center gap-2 border-b border-red-200 pb-3 uppercase tracking-widest text-xs"><History size={18} className="text-red-600"/> 4. Pengembalian Unit</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Tgl & Jam Kembali</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Tgl & Jam Kembali (Aktual)</label>
                                 <div className="flex gap-2">
                                     <input type="date" className="w-full border rounded-xl p-2.5 text-sm font-bold bg-white" value={actualReturnDate} onChange={e => setActualReturnDate(e.target.value)} />
                                     <input type="time" className="w-24 border rounded-xl p-2.5 text-sm font-bold bg-white" value={actualReturnTime} onChange={e => setActualReturnTime(e.target.value)} />
                                 </div>
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Biaya Overtime</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Biaya Overdue (Auto/Manual)</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-xs font-black text-slate-400">Rp</span>
-                                    <input type="number" className="w-full border rounded-xl p-2.5 pl-10 text-sm font-black bg-white focus:ring-2 ring-red-200 outline-none text-red-600" value={overtimeFee} onChange={e => setOvertimeFee(Number(e.target.value))} />
+                                    <input type="number" className="w-full border rounded-xl p-2.5 pl-10 text-sm font-black bg-white focus:ring-2 ring-indigo-200 outline-none" value={overtimeFee} onChange={e => setOvertimeFee(Number(e.target.value))} />
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Biaya Extra</label>
+                            <div className="md:col-span-2 space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Nominal Biaya Extra</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-xs font-black text-slate-400">Rp</span>
                                     <input type="number" className="w-full border rounded-xl p-2.5 pl-10 text-sm font-bold bg-white focus:ring-2 ring-indigo-200 outline-none" value={extraCost} onChange={e => setExtraCost(Number(e.target.value))} />
                                 </div>
                             </div>
-                            <div className="space-y-1">
+                            <div className="md:col-span-2 space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Keterangan Biaya Extra</label>
-                                <input type="text" className="w-full border rounded-xl p-2.5 text-sm font-medium bg-white" value={extraCostDescription} onChange={e => setExtraCostDescription(e.target.value)} placeholder="Contoh: BBM, Cuci, Kerusakan" />
+                                <textarea className="w-full border rounded-xl p-3 text-sm font-medium bg-white" rows={2} value={extraCostDescription} onChange={e => setExtraCostDescription(e.target.value)} placeholder="Contoh: Unit kotor berlebih (cuci salon), bensin kurang 1 bar, baret ringan, dll" />
                             </div>
                         </div>
                     </section>

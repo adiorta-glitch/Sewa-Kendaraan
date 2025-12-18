@@ -27,6 +27,7 @@ try {
     const app = initializeApp(firebaseConfig);
     
     // Initialize Firestore with new Persistence Settings (removes deprecation warning)
+    // This allows the app to work offline and sync when online
     db = initializeFirestore(app, {
         localCache: persistentLocalCache({
             tabManager: persistentMultipleTabManager()
