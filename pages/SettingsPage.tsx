@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppSettings, User } from '../types';
-import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage } from '../services/dataService';
+import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage, generateDummyData, clearAllData } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
-import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
 interface Props {
@@ -14,7 +13,6 @@ interface Props {
 const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [searchParams] = useSearchParams();
   const isSuperAdmin = currentUser.role === 'superadmin';
-  const isAdmin = currentUser.role === 'admin';
   
   // Initialize tab from URL param or default
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isSuperAdmin ? 'general' : 'help'));
@@ -151,7 +149,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
 
   const handleDeleteUser = (id: string) => {
       if (id === currentUser.id) return alert("Tidak bisa menghapus akun sendiri!");
-      if (confirm("Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus user ini secara permanen? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.")) {
+      if (confirm("Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus user ini secara permanen?")) {
           deleteUser(id);
           setUsers(getUsers());
           if (editingUserId === id) resetUserForm();
@@ -178,6 +176,18 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setSettings(prev => ({...prev, rentalPackages: prev.rentalPackages.filter(p => p !== pkg)}));
   };
 
+  const handleDummyData = () => {
+      if(confirm('Ingin mengisi sistem dengan data dummy untuk percobaan? (Data lama akan tertimpa)')) {
+          generateDummyData();
+      }
+  };
+
+  const handleClearData = () => {
+      if(confirm('BAHAYA: Apakah Anda yakin ingin MENGHAPUS SELURUH DATA operasional (Mobil, Driver, Booking, Transaksi)? Tindakan ini tidak dapat dibatalkan.')) {
+          clearAllData();
+      }
+  };
+
   const THEME_OPTIONS = [
       { id: 'red', name: 'Merah (Default)', bg: 'bg-red-600' },
       { id: 'blue', name: 'Biru', bg: 'bg-blue-600' },
@@ -194,7 +204,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
           <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Pengaturan & Bantuan</h2>
           <p className="text-slate-500 dark:text-slate-400">Konfigurasi sistem dan panduan penggunaan aplikasi.</p>
         </div>
-        {isSaved && <span className="bg-green-100 text-green-700 px-4 py-2 rounded-lg font-medium animate-pulse">Tersimpan! Refreshing...</span>}
+        {isSaved && <span className="bg-green-100 text-green-700 px-4 py-2 rounded-lg font-medium animate-pulse">Tersimpan!</span>}
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
@@ -205,6 +215,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                 <button onClick={() => setActiveTab('appearance')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'appearance' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Tampilan</button>
                 <button onClick={() => setActiveTab('master')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'master' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Kategori & Paket</button>
                 <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Manajemen User</button>
+                <button onClick={() => setActiveTab('tools')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'tools' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Alat Sistem</button>
               </>
           )}
           <button onClick={() => setActiveTab('help')} className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${activeTab === 'help' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border dark:border-slate-600'}`}>Pusat Bantuan</button>
@@ -212,6 +223,39 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
 
       <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
           
+          {/* SYSTEM TOOLS TAB */}
+          {activeTab === 'tools' && isSuperAdmin && (
+              <div className="space-y-8 animate-fade-in">
+                  <div className="flex items-center gap-3 border-b dark:border-slate-700 pb-4">
+                      <Database size={32} className="text-indigo-600" />
+                      <div>
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Alat Sistem & Database</h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Kelola database lokal dan reset data operasional.</p>
+                      </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="p-6 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                          <div className="flex items-center gap-3 mb-4">
+                              <div className="p-2 bg-indigo-600 text-white rounded-lg"><Zap size={20}/></div>
+                              <h4 className="font-bold text-indigo-900 dark:text-indigo-100">Mode Percobaan</h4>
+                          </div>
+                          <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">Isi sistem dengan data dummy (Mobil, Driver, Booking, Transaksi) untuk mencoba fitur aplikasi dengan cepat.</p>
+                          <button onClick={handleDummyData} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors w-full">Buatkan Data Dummy</button>
+                      </div>
+
+                      <div className="p-6 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900/30">
+                          <div className="flex items-center gap-3 mb-4">
+                              <div className="p-2 bg-red-600 text-white rounded-lg"><Trash2 size={20}/></div>
+                              <h4 className="font-bold text-red-900 dark:text-red-100">Reset Total</h4>
+                          </div>
+                          <p className="text-sm text-red-700 dark:text-red-300 mb-4">Hapus seluruh data operasional untuk memulai dari awal (Kosong). Pengaturan profil perusahaan dan akun user akan tetap aman.</p>
+                          <button onClick={handleClearData} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition-colors w-full">Hapus Seluruh Data</button>
+                      </div>
+                  </div>
+              </div>
+          )}
+
           {/* GPS INTEGRATION TAB */}
           {activeTab === 'gps' && isSuperAdmin && (
               <div className="space-y-6 animate-fade-in">
@@ -242,7 +286,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             <div>
                                 <label className="block text-sm font-medium mb-1 dark:text-slate-200">URL Server API</label>
                                 <input name="gpsApiUrl" value={settings.gpsApiUrl || ''} onChange={handleChange} className="w-full border rounded p-2" placeholder="https://demo.traccar.org/api" />
-                                <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Pastikan URL dapat diakses (CORS Enabled jika beda domain).</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1 dark:text-slate-200">API Token / Auth</label>
@@ -393,7 +436,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                      
                      <div className="md:col-span-2">
                          <label className="block text-sm font-medium mb-1 dark:text-slate-200">Syarat & Ketentuan Sewa (Muncul di Invoice)</label>
-                         <textarea disabled={!isSuperAdmin} name="termsAndConditions" value={settings.termsAndConditions} onChange={handleChange} className="w-full border rounded p-2 text-sm" rows={4} placeholder="Poin-poin syarat sewa..." />
+                         <textarea disabled={!isSuperAdmin} name="termsAndConditions" value={settings.termsAndConditions} onChange={handleChange} className="w-full border rounded p-2 text-sm" rows={4} placeholder="Poin-pois syarat sewa..." />
                      </div>
 
                      <div className="md:col-span-2">
@@ -404,10 +447,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                      {/* WHATSAPP TEMPLATE */}
                      <div className="md:col-span-2 pt-4 border-t mt-2 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2"><MessageCircle size={18}/> Format Chat WhatsApp</h3>
-                        <div className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded p-3 mb-2 text-xs text-slate-600 dark:text-slate-300">
-                             <strong>Variabel Tersedia:</strong> <br/>
-                             {`{invoiceNo}, {name}, {unit}, {startDate}, {endDate}, {total}, {paid}, {remaining}, {status}, {footer}`}
-                        </div>
                         <textarea 
                              disabled={!isSuperAdmin} 
                              name="whatsappTemplate" 
@@ -486,7 +525,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                       </div>
                       
                       <form onSubmit={handleSaveUser} className="space-y-4">
-                          {/* ... Form fields ... */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Nama Lengkap</label>
@@ -509,28 +547,6 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Password</label>
                                 <input required type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full border rounded p-2" placeholder="Password Login" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border rounded p-2" placeholder="user@email.com" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Nomor Telepon</label>
-                                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border rounded p-2" placeholder="0812..." />
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Foto Profil {isUploading && '(Kompresi...)'}</label>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-slate-200 dark:bg-slate-600 rounded-full flex items-center justify-center overflow-hidden border border-slate-300 dark:border-slate-500">
-                                        {userImage ? (
-                                            <img src={userImage} className="w-full h-full object-cover" />
-                                        ) : <ImageIcon className="text-slate-400" size={20} />}
-                                    </div>
-                                    <input type="file" accept="image/*" onChange={handleUserImageUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
-                                </div>
-                             </div>
                           </div>
 
                           <div className="flex gap-2 mt-2">
@@ -553,9 +569,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                         <table className="min-w-full divide-y divide-slate-200 border dark:border-slate-700">
                             <thead className="bg-slate-50 dark:bg-slate-700">
                                 <tr>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Profil</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Nama</th>
                                     <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Akun</th>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Kontak</th>
                                     <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Role</th>
                                     <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Aksi</th>
                                 </tr>
@@ -563,23 +578,13 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             <tbody className="divide-y dark:divide-slate-700">
                                 {users.map(u => (
                                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="px-4 py-2 text-sm">
-                                            <div className="flex items-center gap-3">
-                                                <img src={u.image || `https://ui-avatars.com/api/?name=${u.name}&background=random`} alt={u.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-600" />
-                                                <div className="font-medium text-slate-900 dark:text-slate-200">{u.name}</div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            <div className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">{u.username}</div>
-                                            <div className="text-xs text-slate-500 dark:text-slate-400">Pwd: {u.password}</div>
-                                        </td>
-                                        <td className="px-4 py-2 text-sm">
-                                            <div className="text-slate-800 dark:text-slate-200">{u.phone || '-'}</div>
-                                            <div className="text-xs text-slate-500 dark:text-slate-400">{u.email}</div>
+                                        <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200">{u.name}</td>
+                                        <td className="px-4 py-2 font-mono text-xs text-indigo-600 dark:text-indigo-400">
+                                            {u.username} <span className="text-slate-400 ml-1">(Pwd: {u.password})</span>
                                         </td>
                                         <td className="px-4 py-2 capitalize">
                                             <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                                                {u.role === 'admin' ? 'User' : u.role}
+                                                {u.role}
                                             </span>
                                         </td>
                                         <td className="px-4 py-2 text-right">

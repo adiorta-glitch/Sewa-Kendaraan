@@ -4,13 +4,6 @@ import {
   BookingStatus, PaymentStatus 
 } from '../types';
 
-// Helper for Mock Data Dates
-const getDateStr = (offsetDays: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().split('T')[0];
-};
-
 export const DEFAULT_SETTINGS: AppSettings = {
   companyName: 'Bersama Rent Car',
   displayName: 'BRC',
@@ -23,7 +16,48 @@ export const DEFAULT_SETTINGS: AppSettings = {
   themeColor: 'red',
   darkMode: false,
   paymentTerms: '1. Pembayaran DP minimal 30% saat booking.\n2. Pelunasan dilakukan saat serah terima unit.\n3. Pembayaran via Transfer BCA 1234567890 a.n Bersama Rent.',
-  termsAndConditions: `1. Persyaratan Sewa (Lepas Kunci)\nA. Wajib: E-KTP Asli & SIM A.\nB. Jaminan Tambahan: Motor + STNK asli atau uang jaminan.`,
+  termsAndConditions: `1. Persyaratan Sewa (Lepas Kunci)
+A. Untuk penyewaan tanpa pengemudi (self-drive), Penyewa wajib menyerahkan dokumen asli sebagai jaminan keamanan yang akan dikembalikan setelah masa sewa berakhir:
+B. Wajib: E-KTP Asli Penyewa.
+C. Wajib: SIM A yang masih berlaku (diperlihatkan & difotokopi/foto).
+D. Jaminan Tambahan (Pilih salah satu):
+E. Sepeda motor + STNK asli (atas nama Penyewa/Keluarga).
+F. NPWP / Kartu Keluarga / Kartu Identitas Pegawai (Karpeg).
+G. Uang deposit jaminan (Refundable) sebesar Rp1.000.000.
+H. Pihak Rental berhak menolak permohonan sewa jika identitas dirasa kurang meyakinkan atau tidak valid.
+
+2. Pembayaran dan Durasi Sewa
+A. Booking Fee (DP): Penyewa wajib membayar uang muka minimal 30-50% dari total biaya sewa untuk mengamankan jadwal.
+B. Pelunasan: Sisa pembayaran wajib dilunasi sebelum serah terima kunci mobil.
+C. Perhitungan Waktu:
+D. Paket 12 Jam / 24 Jam (Full Day).
+E. Keterlambatan pengembalian (Overtime) dikenakan denda sebesar 10% per jam dari harga sewa harian.
+F. Keterlambatan lebih dari 5 jam dihitung sebagai sewa 1 hari penuh.
+G. Pembatalan:
+I. Pembatalan H-1: DP hangus 50%.
+Ii. Pembatalan pada hari H: DP hangus 100%.
+
+3. Tanggung Jawab Penyewa
+A. Kondisi Mobil: Mobil diserahkan dalam keadaan bersih dan laik jalan. Penyewa wajib mengembalikan dalam kondisi kebersihan yang sama. (Jika kotor berlebih/bau rokok tajam, dikenakan biaya salon sebesar Rp650.000,-).
+B. Bahan Bakar (BBM): Sistem pengembalian BBM adalah posisi sama dengan saat pengambilan (Return to same level).
+C. Penggunaan: Mobil hanya boleh digunakan sesuai peruntukan jalan raya (bukan untuk offroad, balapan, atau mengangkut barang yang merusak interior/bau menyengat seperti durian/ikan basah tanpa wadah kedap udara).
+
+4. Kerusakan dan Kecelakaan
+A. Kerusakan Ringan (Lecet/Penyok): Penyewa bertanggung jawab penuh atas biaya perbaikan di bengkel yang ditunjuk oleh Pihak Rental.
+B. Kerusakan Berat/Kecelakaan:
+i. Penyewa menanggung seluruh biaya perbaikan.
+ii. Biaya Masa Tunggu (Idle Cost): Penyewa wajib membayar biaya sewa harian selama mobil berada di bengkel (karena mobil tidak bisa beroperasi/menghasilkan uang).
+C. Kehilangan: Jika terjadi kehilangan unit akibat kelalaian Penyewa (kunci tertinggal, parkir sembarangan), Penyewa wajib mengganti unit dengan spesifikasi setara atau membayar tunai seharga mobil tersebut di pasaran.
+
+5. Larangan Keras
+A. Penyewa dilarang keras untuk:
+B. Menggadaikan mobil.
+C. Menyewakan kembali ke pihak ketiga (over-rent).
+D. Menggunakan mobil untuk tindak kejahatan/kriminal.
+E. Mengubah bentuk atau memodifikasi komponen mobil.
+
+6. Force Majeure
+Pihak Rental tidak bertanggung jawab atas kerugian Penyewa yang disebabkan oleh kejadian di luar kendali (bencana alam, huru-hara, atau kerusakan mesin murni karena faktor usia kendaraan yang bukan akibat kelalaian penggunaan).`,
   whatsappTemplate: 'Halo *{name}*,\nBerikut invoice sewa mobil anda:\nUnit: {unit}\nTotal: {total}\n\nTerima kasih.',
   carCategories: ['MPV', 'SUV', 'Sedan', 'City Car', 'Luxury', 'Minibus'],
   rentalPackages: ['12 Jam (Dalam Kota)', '24 Jam (Dalam Kota)', '24 Jam (Luar Kota)'],
@@ -59,10 +93,6 @@ export const setStoredData = (key: string, data: any) => {
     }
 };
 
-/**
- * ANTI-BENTROK JADWAL LOGIC
- * Mengecek apakah resource (mobil/driver) tersedia pada rentang waktu tertentu.
- */
 export const checkAvailability = (
     bookings: Booking[], 
     resourceId: string, 
@@ -73,6 +103,7 @@ export const checkAvailability = (
 ): boolean => {
     return !bookings.some(b => {
         if (excludeBookingId && b.id === excludeBookingId) return false;
+        // Anti bentrok: Abaikan pesanan yang dicancel
         if (b.status === BookingStatus.CANCELLED) return false;
         
         if (type === 'car' && b.carId !== resourceId) return false;
@@ -81,24 +112,65 @@ export const checkAvailability = (
         const bStart = new Date(b.startDate);
         const bEnd = new Date(b.endDate);
         
-        // Overlap Condition: (StartA < EndB) && (EndA > StartB)
         return (start < bEnd && end > bStart);
     });
 };
 
 export const initializeData = async () => {
+    const hasSettings = localStorage.getItem(KEYS.SETTINGS);
+    if (!hasSettings) {
+        setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
+    } else {
+        // Force update T&C if it's still default or empty (to apply the user's requested text)
+        const currentSettings = getStoredData<AppSettings>(KEYS.SETTINGS, DEFAULT_SETTINGS);
+        if (!currentSettings.termsAndConditions || currentSettings.termsAndConditions.includes('Persyaratan Sewa (Lepas Kunci)\nA. Wajib: E-KTP Asli')) {
+             setStoredData(KEYS.SETTINGS, { ...currentSettings, termsAndConditions: DEFAULT_SETTINGS.termsAndConditions });
+        }
+    }
+
     const hasCars = localStorage.getItem(KEYS.CARS);
     if (!hasCars) {
-        // Inisialisasi data default jika masih kosong
-        setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
-        setStoredData(KEYS.CARS, []);
-        setStoredData(KEYS.BOOKINGS, []);
-        setStoredData(KEYS.TRANSACTIONS, []);
-        setStoredData(KEYS.DRIVERS, []);
-        setStoredData(KEYS.PARTNERS, []);
-        setStoredData(KEYS.CUSTOMERS, []);
+        const data = generateDummyDataObjects();
+        setStoredData(KEYS.PARTNERS, data.partners);
+        setStoredData(KEYS.DRIVERS, data.drivers);
+        setStoredData(KEYS.CARS, data.cars);
+        setStoredData(KEYS.CUSTOMERS, data.customers);
+        setStoredData(KEYS.BOOKINGS, data.bookings);
+        setStoredData(KEYS.TRANSACTIONS, data.transactions);
+        setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
     }
     return true;
+};
+
+export const clearAllData = () => {
+    const keysToRemove = [KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS];
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    window.location.reload();
+};
+
+const generateDummyDataObjects = () => {
+    // Return empty arrays to start with a clean system
+    return { 
+        partners: [], 
+        drivers: [], 
+        cars: [], 
+        customers: [], 
+        bookings: [], 
+        transactions: [], 
+        highSeasons: [] 
+    };
+};
+
+export const generateDummyData = () => {
+    const data = generateDummyDataObjects();
+    setStoredData(KEYS.PARTNERS, data.partners);
+    setStoredData(KEYS.DRIVERS, data.drivers);
+    setStoredData(KEYS.CARS, data.cars);
+    setStoredData(KEYS.CUSTOMERS, data.customers);
+    setStoredData(KEYS.BOOKINGS, data.bookings);
+    setStoredData(KEYS.TRANSACTIONS, data.transactions);
+    setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+    window.location.reload();
 };
 
 export const compressImage = (file: File): Promise<string> => {
