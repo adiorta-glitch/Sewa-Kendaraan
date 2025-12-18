@@ -5,7 +5,7 @@ import {
   Image as ImageIcon, X, FileText, ClipboardCheck, Fuel, 
   Gauge, Car as CarIcon, Edit2, FileSpreadsheet, ChevronDown, 
   Filter, Info, Send, Wallet, CheckSquare, Clock as ClockIcon,
-  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle
+  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle, Camera
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -47,6 +47,13 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [useDriver, setUseDriver] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [driverNote, setDriverNote] = useState('');
+
+  // SECURITY DEPOSIT STATE
+  const [depositType, setDepositType] = useState<'Barang' | 'Uang'>('Barang');
+  const [depositDescription, setDepositDescription] = useState('');
+  const [depositValue, setDepositValue] = useState<string>(''); // string for easier input handling
+  const [depositImage, setDepositImage] = useState<string | null>(null);
+  const [isUploadingDeposit, setIsUploadingDeposit] = useState(false);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
@@ -224,6 +231,21 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
     }
   };
 
+  const handleDepositImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          setIsUploadingDeposit(true);
+          try {
+              const res = await compressImage(file);
+              setDepositImage(res);
+          } catch(e) {
+              alert("Gagal memproses foto jaminan.");
+          } finally {
+              setIsUploadingDeposit(false);
+          }
+      }
+  };
+
   const handleEdit = (booking: Booking) => {
       setEditingBookingId(booking.id);
       setActiveTab('create');
@@ -242,6 +264,12 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       setSelectedDriverId(booking.driverId || '');
       setDriverNote(booking.driverNote || '');
       
+      // Deposit Data
+      setDepositType(booking.securityDepositType || 'Barang');
+      setDepositValue(booking.securityDepositValue ? booking.securityDepositValue.toString() : '');
+      setDepositDescription(booking.securityDepositDescription || '');
+      setDepositImage(booking.securityDepositImage || null);
+
       setSelectedCustomerId(booking.customerId || '');
       setCustomerName(booking.customerName);
       setCustomerPhone(booking.customerPhone);
@@ -303,9 +331,12 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       packageType,
       destination,
       customerNote: customerNote,
-      securityDepositType: 'Barang',
-      securityDepositValue: 0,
-      securityDepositDescription: '',
+      // DEPOSIT FIELDS
+      securityDepositType: depositType,
+      securityDepositValue: depositValue ? parseInt(depositValue) : 0,
+      securityDepositDescription: depositDescription,
+      securityDepositImage: depositImage || undefined,
+      
       basePrice: pricing.basePrice,
       driverFee: pricing.driverFee,
       highSeasonFee: pricing.highSeasonFee,
@@ -438,6 +469,9 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const resetForm = () => {
     setEditingBookingId(null); setSelectedCarId(''); setStartDate(''); setEndDate('');
     setUseDriver(false); setSelectedDriverId(''); setDriverNote('');
+    // Reset Deposit
+    setDepositType('Barang'); setDepositValue(''); setDepositDescription(''); setDepositImage(null);
+    
     setSelectedCustomerId(''); setCustomerName(''); setCustomerPhone(''); setPackageType(settings.rentalPackages[0]);
     setDestination('Dalam Kota'); setCustomerNote(''); setCustomBasePrice(0); setDeliveryFee(0);
     setAmountPaid('0'); setActualReturnDate(''); setActualReturnTime(''); setOvertimeFee(0);
@@ -614,6 +648,48 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                     <textarea className="w-full border rounded-lg p-3 text-xs" rows={2} placeholder="Keterangan untuk Driver" value={driverNote} onChange={e => setDriverNote(e.target.value)} />
                                 </div>
                              )}
+                        </div>
+                    </section>
+                    
+                    {/* SECURITY DEPOSIT SECTION */}
+                    <section className="space-y-4 pt-4 border-t">
+                        <h4 className="font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest text-[10px]"><Shield size={16} className="text-indigo-600"/> Jaminan (Security Deposit)</h4>
+                        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm space-y-3">
+                             <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
+                                 <button type="button" onClick={() => setDepositType('Barang')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${depositType === 'Barang' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>Barang / Dokumen</button>
+                                 <button type="button" onClick={() => setDepositType('Uang')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${depositType === 'Uang' ? 'bg-white text-green-700 shadow-sm' : 'text-slate-500'}`}>Uang (Deposit)</button>
+                             </div>
+                             
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">{depositType === 'Barang' ? 'Deskripsi Barang' : 'Keterangan Deposit'}</label>
+                                <textarea className="w-full border rounded-lg p-2.5 text-xs font-medium" rows={2} placeholder={depositType === 'Barang' ? "Contoh: KTP Asli an. Budi + Motor Vario B 1234 XY" : "Contoh: Deposit via Transfer BCA"} value={depositDescription} onChange={e => setDepositDescription(e.target.value)} />
+                             </div>
+
+                             <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">{depositType === 'Barang' ? 'Estimasi Nilai (Opsional)' : 'Nominal Deposit'}</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">Rp</span>
+                                    <input type="number" className="w-full border rounded-lg p-2 pl-9 text-sm font-bold" value={depositValue} onChange={e => setDepositValue(e.target.value)} placeholder="0" />
+                                </div>
+                             </div>
+
+                             <div className="pt-2">
+                                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Foto Jaminan {isUploadingDeposit && '(Memproses...)'}</label>
+                                 <div className="relative w-full h-32 bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center overflow-hidden hover:bg-slate-100 transition-colors group">
+                                     {depositImage ? (
+                                         <>
+                                            <img src={depositImage} className="w-full h-full object-cover" />
+                                            <button type="button" onClick={() => setDepositImage(null)} className="absolute top-2 right-2 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
+                                         </>
+                                     ) : (
+                                         <div className="text-center text-slate-400 pointer-events-none">
+                                             <Camera size={24} className="mx-auto mb-1"/>
+                                             <span className="text-[10px]">Upload Foto</span>
+                                         </div>
+                                     )}
+                                     <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleDepositImageUpload} />
+                                 </div>
+                             </div>
                         </div>
                     </section>
                 </div>
