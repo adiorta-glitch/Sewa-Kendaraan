@@ -3,6 +3,8 @@ import {
   Car, Driver, Partner, Customer, Booking, Transaction, AppSettings, HighSeason, 
   BookingStatus, PaymentStatus 
 } from '../types';
+import { db } from './firebaseConfig';
+import { collection, getDocs, doc, writeBatch, query } from 'firebase/firestore';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   companyName: 'Bersama Rent Car',
@@ -85,9 +87,48 @@ export const getStoredData = <T>(key: string, defaultValue: T): T => {
     return defaultValue;
 };
 
+// Fungsi Sinkronisasi ke Firestore (Write/Delete)
+const syncToFirestore = async (key: string, data: any) => {
+    if (!db) return; // Skip jika Firebase tidak dikonfigurasi
+    if (!Array.isArray(data)) return; // Hanya sync collection berupa array
+
+    try {
+        const batch = writeBatch(db);
+        const colRef = collection(db, key);
+        
+        // 1. Ambil data eksisting di Firestore untuk cek diff (yang perlu dihapus)
+        const snapshot = await getDocs(colRef);
+        const newIds = new Set(data.map((item: any) => item.id));
+        
+        // Delete: Dokumen yang ada di Firestore tapi tidak ada di data baru (berarti sudah dihapus di UI)
+        snapshot.docs.forEach(docSnap => {
+            if (!newIds.has(docSnap.id)) {
+                batch.delete(docSnap.ref);
+            }
+        });
+
+        // Write/Update: Set ulang semua data
+        data.forEach((item: any) => {
+            if (item.id) {
+                const docRef = doc(db, key, item.id);
+                batch.set(docRef, item, { merge: true });
+            }
+        });
+
+        await batch.commit();
+        console.log(`[Firebase] Synced collection ${key}`);
+    } catch (error) {
+        console.error(`[Firebase] Error syncing ${key}:`, error);
+    }
+};
+
 export const setStoredData = (key: string, data: any) => {
     try {
+        // 1. Simpan ke LocalStorage (Untuk performa UI instan)
         localStorage.setItem(key, JSON.stringify(data));
+        
+        // 2. Sinkron ke Firebase di background
+        syncToFirestore(key, data);
     } catch (e) {
         console.error(`Error saving ${key} to localStorage`, e);
     }
@@ -117,17 +158,39 @@ export const checkAvailability = (
 };
 
 export const initializeData = async () => {
+    // 1. Cek Setting
     const hasSettings = localStorage.getItem(KEYS.SETTINGS);
     if (!hasSettings) {
         setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
-    } else {
-        // Force update T&C if it's still default or empty (to apply the user's requested text)
-        const currentSettings = getStoredData<AppSettings>(KEYS.SETTINGS, DEFAULT_SETTINGS);
-        if (!currentSettings.termsAndConditions || currentSettings.termsAndConditions.includes('Persyaratan Sewa (Lepas Kunci)\nA. Wajib: E-KTP Asli')) {
-             setStoredData(KEYS.SETTINGS, { ...currentSettings, termsAndConditions: DEFAULT_SETTINGS.termsAndConditions });
+    }
+
+    // 2. Jika Firebase terhubung, tarik data dari Cloud (Read)
+    if (db) {
+        try {
+            console.log("[Firebase] Fetching data from cloud...");
+            const collectionsToSync = [
+                KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, 
+                KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS
+            ];
+
+            // Load secara paralel
+            await Promise.all(collectionsToSync.map(async (key) => {
+                const colRef = collection(db, key);
+                const snapshot = await getDocs(colRef);
+                
+                if (!snapshot.empty) {
+                    const data = snapshot.docs.map(doc => doc.data());
+                    // Update LocalStorage dengan data dari Cloud
+                    localStorage.setItem(key, JSON.stringify(data));
+                }
+            }));
+            console.log("[Firebase] Data synced to LocalStorage.");
+        } catch (e) {
+            console.error("[Firebase] Failed to fetch data, using LocalStorage fallback.", e);
         }
     }
 
+    // 3. Cek apakah LocalStorage masih kosong (User baru / Offline tanpa cache)
     const hasCars = localStorage.getItem(KEYS.CARS);
     if (!hasCars) {
         // Initialize with empty arrays (Clean Slate)
@@ -145,12 +208,18 @@ export const initializeData = async () => {
 
 export const clearAllData = () => {
     const keysToRemove = [KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS];
-    keysToRemove.forEach(k => localStorage.removeItem(k));
+    
+    // Clear Local Storage
+    keysToRemove.forEach(k => {
+        localStorage.removeItem(k);
+        // Clear Firebase Collection (Trigger empty sync)
+        syncToFirestore(k, []); 
+    });
+    
     window.location.reload();
 };
 
 const generateDummyDataObjects = () => {
-    // Return empty arrays to ensure a clean system start
     return { 
         partners: [], 
         drivers: [], 
