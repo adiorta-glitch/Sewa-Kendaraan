@@ -4,7 +4,7 @@ import {
   BookingStatus, PaymentStatus 
 } from '../types';
 import { db } from './firebaseConfig';
-import { collection, getDocs, doc, writeBatch, query } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   companyName: 'Bersama Rent Car',
@@ -87,36 +87,56 @@ export const getStoredData = <T>(key: string, defaultValue: T): T => {
     return defaultValue;
 };
 
-// Fungsi Sinkronisasi ke Firestore (Write/Delete)
+// Fungsi Sinkronisasi ke Firestore (Write/Delete) dengan Batch Chunking
 const syncToFirestore = async (key: string, data: any) => {
-    if (!db) return; // Skip jika Firebase tidak dikonfigurasi
-    if (!Array.isArray(data)) return; // Hanya sync collection berupa array
+    if (!db) {
+        console.warn("[Firebase] Cannot sync: DB not initialized.");
+        return;
+    }
+    if (!Array.isArray(data)) return; 
 
     try {
-        const batch = writeBatch(db);
         const colRef = collection(db, key);
         
         // 1. Ambil data eksisting di Firestore untuk cek diff (yang perlu dihapus)
         const snapshot = await getDocs(colRef);
         const newIds = new Set(data.map((item: any) => item.id));
         
-        // Delete: Dokumen yang ada di Firestore tapi tidak ada di data baru (berarti sudah dihapus di UI)
+        const operations: { type: 'set' | 'delete', ref: any, data?: any }[] = [];
+
+        // Identify Deletes
         snapshot.docs.forEach(docSnap => {
             if (!newIds.has(docSnap.id)) {
-                batch.delete(docSnap.ref);
+                operations.push({ type: 'delete', ref: docSnap.ref });
             }
         });
 
-        // Write/Update: Set ulang semua data
+        // Identify Writes/Updates
         data.forEach((item: any) => {
             if (item.id) {
                 const docRef = doc(db, key, item.id);
-                batch.set(docRef, item, { merge: true });
+                operations.push({ type: 'set', ref: docRef, data: item });
             }
         });
 
-        await batch.commit();
-        console.log(`[Firebase] Synced collection ${key}`);
+        // 2. Commit in Chunks (Firestore Limit: 500 ops per batch)
+        const CHUNK_SIZE = 450; 
+        for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+            const batch = writeBatch(db);
+            const chunk = operations.slice(i, i + CHUNK_SIZE);
+            
+            chunk.forEach(op => {
+                if (op.type === 'delete') {
+                    batch.delete(op.ref);
+                } else {
+                    batch.set(op.ref, op.data, { merge: true });
+                }
+            });
+            
+            await batch.commit();
+        }
+
+        console.log(`[Firebase] Successfully synced collection ${key} (${operations.length} ops)`);
     } catch (error) {
         console.error(`[Firebase] Error syncing ${key}:`, error);
     }
@@ -164,44 +184,80 @@ export const initializeData = async () => {
         setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
     }
 
-    // 2. Jika Firebase terhubung, tarik data dari Cloud (Read)
+    // 2. Integrasi Firebase
     if (db) {
         try {
-            console.log("[Firebase] Fetching data from cloud...");
+            console.log("[Firebase] Connecting to cloud...");
             const collectionsToSync = [
                 KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, 
                 KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS
             ];
 
-            // Load secara paralel
-            await Promise.all(collectionsToSync.map(async (key) => {
-                const colRef = collection(db, key);
-                const snapshot = await getDocs(colRef);
-                
-                if (!snapshot.empty) {
-                    const data = snapshot.docs.map(doc => doc.data());
-                    // Update LocalStorage dengan data dari Cloud
-                    localStorage.setItem(key, JSON.stringify(data));
-                }
-            }));
-            console.log("[Firebase] Data synced to LocalStorage.");
-        } catch (e) {
-            console.error("[Firebase] Failed to fetch data, using LocalStorage fallback.", e);
-        }
-    }
+            // Cek apakah Cloud Kosong? (Indikator: Cars collection kosong)
+            const carCol = collection(db, KEYS.CARS);
+            const carSnap = await getDocs(carCol);
 
-    // 3. Cek apakah LocalStorage masih kosong (User baru / Offline tanpa cache)
-    const hasCars = localStorage.getItem(KEYS.CARS);
-    if (!hasCars) {
-        // Initialize with empty arrays (Clean Slate)
-        const data = generateDummyDataObjects();
-        setStoredData(KEYS.PARTNERS, data.partners);
-        setStoredData(KEYS.DRIVERS, data.drivers);
-        setStoredData(KEYS.CARS, data.cars);
-        setStoredData(KEYS.CUSTOMERS, data.customers);
-        setStoredData(KEYS.BOOKINGS, data.bookings);
-        setStoredData(KEYS.TRANSACTIONS, data.transactions);
-        setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+            if (!carSnap.empty) {
+                // A. Cloud Ada Data -> SYNC DOWN (Cloud to Local)
+                // Ini memastikan aplikasi di device lain mendapat data terbaru
+                console.log("[Firebase] Found cloud data. Syncing DOWN...");
+                
+                await Promise.all(collectionsToSync.map(async (key) => {
+                    const colRef = collection(db, key);
+                    const snapshot = await getDocs(colRef);
+                    if (!snapshot.empty) {
+                        const data = snapshot.docs.map(doc => doc.data());
+                        localStorage.setItem(key, JSON.stringify(data));
+                    }
+                }));
+                console.log("[Firebase] Download complete.");
+
+            } else {
+                // B. Cloud Kosong -> Cek Local
+                console.log("[Firebase] Cloud is empty.");
+                const hasLocalCars = localStorage.getItem(KEYS.CARS);
+                
+                if (hasLocalCars) {
+                    // Local Ada Data -> SYNC UP (Local to Cloud)
+                    // Ini memperbaiki kasus user sudah pakai app, baru pasang firebase belakangan
+                    console.log("[Firebase] Local data found. Syncing UP to cloud...");
+                    for (const key of collectionsToSync) {
+                        const localData = getStoredData(key, []);
+                        if (localData.length > 0) {
+                            await syncToFirestore(key, localData);
+                        }
+                    }
+                    console.log("[Firebase] Upload complete.");
+                } else {
+                    // C. Semua Kosong -> Generate Dummy -> SYNC UP
+                    console.log("[Firebase] Fresh install. Generating dummy data...");
+                    const data = generateDummyDataObjects();
+                    setStoredData(KEYS.PARTNERS, data.partners);
+                    setStoredData(KEYS.DRIVERS, data.drivers);
+                    setStoredData(KEYS.CARS, data.cars);
+                    setStoredData(KEYS.CUSTOMERS, data.customers);
+                    setStoredData(KEYS.BOOKINGS, data.bookings);
+                    setStoredData(KEYS.TRANSACTIONS, data.transactions);
+                    setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+                }
+            }
+        } catch (e) {
+            console.error("[Firebase] Initialization error (Check config/rules):", e);
+        }
+    } else {
+        console.log("[Data] Running in Local Mode (Firebase not configured).");
+        // Fallback Local Only Initialization
+        const hasCars = localStorage.getItem(KEYS.CARS);
+        if (!hasCars) {
+            const data = generateDummyDataObjects();
+            setStoredData(KEYS.PARTNERS, data.partners);
+            setStoredData(KEYS.DRIVERS, data.drivers);
+            setStoredData(KEYS.CARS, data.cars);
+            setStoredData(KEYS.CUSTOMERS, data.customers);
+            setStoredData(KEYS.BOOKINGS, data.bookings);
+            setStoredData(KEYS.TRANSACTIONS, data.transactions);
+            setStoredData(KEYS.HIGH_SEASONS, data.highSeasons);
+        }
     }
     return true;
 };
