@@ -272,8 +272,8 @@ const StatisticsPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4">Grafik Pendapatan Harian</h4>
-                  <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                  <div className="h-80 w-full relative">
+                      <ResponsiveContainer width="99%" height="100%">
                           <BarChart data={getDailyHistogram()}>
                               <CartesianGrid strokeDasharray="3 3" vertical={false} />
                               <XAxis dataKey="name" />
@@ -288,8 +288,8 @@ const StatisticsPage = () => {
               </div>
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4">Status Pembayaran</h4>
-                  <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                  <div className="h-80 w-full relative">
+                      <ResponsiveContainer width="99%" height="100%">
                           <PieChart>
                               <Pie
                                   data={getPaymentStats()}
@@ -319,8 +319,8 @@ const StatisticsPage = () => {
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
               <h4 className="font-bold text-slate-700 mb-4">Top 5 Pelanggan Teraktif</h4>
-              <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+              <div className="h-72 w-full relative">
+                  <ResponsiveContainer width="99%" height="100%">
                       <BarChart data={getTopCustomers()} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                           <XAxis type="number" hide />
@@ -342,8 +342,8 @@ const StatisticsPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Package size={18}/> Top Unit Terlaris</h4>
-                  <div className="h-72 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                  <div className="h-72 w-full relative">
+                      <ResponsiveContainer width="99%" height="100%">
                           <PieChart>
                               <Pie
                                   data={getTopFleet()}
@@ -363,8 +363,8 @@ const StatisticsPage = () => {
               </div>
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><ShieldCheck size={18}/> Transaksi Perusahaan vs Mitra</h4>
-                  <div className="h-72 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                  <div className="h-72 w-full relative">
+                      <ResponsiveContainer width="99%" height="100%">
                           <PieChart>
                               <Pie
                                   data={getOwnershipStats()}
@@ -385,8 +385,8 @@ const StatisticsPage = () => {
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
               <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserIcon size={18}/> Performa Driver (Jumlah Trip)</h4>
-              <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+              <div className="h-72 w-full relative">
+                  <ResponsiveContainer width="99%" height="100%">
                       <BarChart data={getDriverStats()}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} />
                           <XAxis dataKey="name" tick={{fontSize: 10}} />

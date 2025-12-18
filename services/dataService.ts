@@ -130,6 +130,7 @@ export const initializeData = async () => {
 
     const hasCars = localStorage.getItem(KEYS.CARS);
     if (!hasCars) {
+        // Initialize with empty arrays (Clean Slate)
         const data = generateDummyDataObjects();
         setStoredData(KEYS.PARTNERS, data.partners);
         setStoredData(KEYS.DRIVERS, data.drivers);
@@ -149,7 +150,7 @@ export const clearAllData = () => {
 };
 
 const generateDummyDataObjects = () => {
-    // Return empty arrays to start with a clean system
+    // Return empty arrays to ensure a clean system start
     return { 
         partners: [], 
         drivers: [], 

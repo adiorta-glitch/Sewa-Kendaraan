@@ -22,28 +22,6 @@ const INITIAL_USERS: User[] = [
     phone: '081211111111',
     role: 'admin',
     image: 'https://i.pravatar.cc/150?u=admin'
-  },
-  {
-    id: 'u3',
-    username: 'driver',
-    password: '123',
-    name: 'Pak Asep', // Matches Mock Driver Name
-    email: 'asep@driver.com',
-    phone: '08122334455',
-    role: 'driver',
-    linkedDriverId: 'd1', // Links to Driver ID d1
-    image: 'https://i.pravatar.cc/150?u=d1'
-  },
-  {
-    id: 'u4',
-    username: 'mitra',
-    password: '123',
-    name: 'Budi Santoso', // Matches Mock Partner Name
-    email: 'budi@mitra.com',
-    phone: '08123456789',
-    role: 'partner',
-    linkedPartnerId: 'p1', // Links to Partner ID p1
-    image: 'https://i.pravatar.cc/150?u=p1'
   }
 ];
 
