@@ -4,16 +4,16 @@ import {
   BookingStatus, PaymentStatus 
 } from '../types';
 import { db } from './firebaseConfig';
-import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, setDoc, getDoc } from 'firebase/firestore';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  companyName: 'Bersama Rent Car',
-  displayName: 'BRC',
+  companyName: "Rent'O",
+  displayName: "Rent'O",
   tagline: 'Solusi Transportasi Terpercaya',
   address: 'Jl. Raya Merdeka No. 123, Jakarta',
-  phone: '0812-3456-7890',
-  email: 'admin@bersamarent.com',
-  website: 'www.bersamarent.com',
+  phone: '0851-9068-0660',
+  email: 'admin@rento.click',
+  website: 'rento.click',
   invoiceFooter: 'Terima kasih atas kepercayaan Anda menggunakan jasa kami.',
   themeColor: 'red',
   darkMode: false,
@@ -74,7 +74,8 @@ const KEYS = {
     BOOKINGS: 'bookings',
     TRANSACTIONS: 'transactions',
     SETTINGS: 'appSettings',
-    HIGH_SEASONS: 'highSeasons'
+    HIGH_SEASONS: 'highSeasons',
+    USERS: 'users'
 };
 
 export const getStoredData = <T>(key: string, defaultValue: T): T => {
@@ -87,7 +88,7 @@ export const getStoredData = <T>(key: string, defaultValue: T): T => {
     return defaultValue;
 };
 
-// Fungsi Sinkronisasi ke Firestore (Write/Delete) dengan Batch Chunking
+// Fungsi Sinkronisasi Koleksi Array (List) ke Firestore
 const syncToFirestore = async (key: string, data: any) => {
     if (!db) {
         console.warn("[Firebase] Cannot sync: DB not initialized.");
@@ -98,7 +99,7 @@ const syncToFirestore = async (key: string, data: any) => {
     try {
         const colRef = collection(db, key);
         
-        // 1. Ambil data eksisting di Firestore untuk cek diff (yang perlu dihapus)
+        // 1. Ambil data eksisting di Firestore untuk cek diff
         const snapshot = await getDocs(colRef);
         const newIds = new Set(data.map((item: any) => item.id));
         
@@ -119,7 +120,7 @@ const syncToFirestore = async (key: string, data: any) => {
             }
         });
 
-        // 2. Commit in Chunks (Firestore Limit: 500 ops per batch)
+        // 2. Commit in Chunks
         const CHUNK_SIZE = 450; 
         for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
             const batch = writeBatch(db);
@@ -142,14 +143,30 @@ const syncToFirestore = async (key: string, data: any) => {
     }
 };
 
+// Fungsi Khusus untuk Sync Pengaturan (Single Document)
+const syncSettingsToCloud = async (settings: AppSettings) => {
+    if (!db) return;
+    try {
+        // Simpan sebagai dokumen tunggal 'system/appSettings'
+        await setDoc(doc(db, 'system', 'appSettings'), settings);
+        console.log("[Firebase] Settings synced to cloud.");
+    } catch (e) {
+        console.error("Error syncing settings:", e);
+    }
+};
+
 // Changed to ASYNC to ensure data is written before reload
 export const setStoredData = async (key: string, data: any) => {
     try {
         // 1. Simpan ke LocalStorage (Untuk performa UI instan)
         localStorage.setItem(key, JSON.stringify(data));
         
-        // 2. Sinkron ke Firebase di background (Await to ensure completion)
-        await syncToFirestore(key, data);
+        // 2. Sinkron ke Firebase
+        if (key === KEYS.SETTINGS) {
+            await syncSettingsToCloud(data);
+        } else {
+            await syncToFirestore(key, data);
+        }
     } catch (e) {
         console.error(`Error saving ${key} to localStorage`, e);
     }
@@ -179,19 +196,39 @@ export const checkAvailability = (
 };
 
 export const initializeData = async () => {
-    // 1. Cek Setting
+    // 1. Cek Setting Local
     const hasSettings = localStorage.getItem(KEYS.SETTINGS);
     if (!hasSettings) {
-        await setStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
+        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
     }
 
     // 2. Integrasi Firebase
     if (db) {
         try {
             console.log("[Firebase] Connecting to cloud...");
+
+            // A. Sync Settings (Single Document)
+            try {
+                const settingsRef = doc(db, 'system', 'appSettings');
+                const settingsSnap = await getDoc(settingsRef);
+                if (settingsSnap.exists()) {
+                    console.log("[Firebase] Found cloud settings. Syncing DOWN...");
+                    const cloudSettings = settingsSnap.data() as AppSettings;
+                    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cloudSettings));
+                } else {
+                    // Jika cloud kosong, push settings default/lokal ke cloud
+                    console.log("[Firebase] Cloud settings empty. Syncing UP...");
+                    const localSettings = getStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
+                    await syncSettingsToCloud(localSettings);
+                }
+            } catch (e) {
+                console.warn("[Firebase] Settings sync warning:", e);
+            }
+
+            // B. Sync Collections (Arrays) - Added USERS
             const collectionsToSync = [
                 KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, 
-                KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS
+                KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS, KEYS.USERS
             ];
 
             const carCol = collection(db, KEYS.CARS);
@@ -208,7 +245,7 @@ export const initializeData = async () => {
                     }
                 }));
             } else {
-                console.log("[Firebase] Cloud is empty.");
+                console.log("[Firebase] Cloud collections empty.");
                 const hasLocalCars = localStorage.getItem(KEYS.CARS);
                 if (hasLocalCars) {
                     console.log("[Firebase] Local data found. Syncing UP to cloud...");
@@ -232,6 +269,7 @@ export const initializeData = async () => {
 
 // Changed to Async
 export const clearAllData = async () => {
+    // Note: We deliberately exclude KEYS.USERS from clearAllData to prevent accidental lockout of admin accounts
     const keysToRemove = [KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS];
     
     // Clear All

@@ -1,6 +1,6 @@
 {
-  "name": "Rento",
-  "description": "Sistem Manajemen Rental Mobil Profesional - BRC",
+  "name": "Rento.click",
+  "description": "Sistem Manajemen Rental Mobil Profesional & Terintegrasi - rento.click",
   "requestFramePermissions": [
     "camera",
     "geolocation"

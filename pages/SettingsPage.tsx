@@ -619,6 +619,36 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                       </div>
                       
                       <form onSubmit={handleSaveUser} className="space-y-4">
+                          <div className="flex flex-col items-center mb-4">
+                              <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-2">Foto Profil {isUploading && '(Mengompres...)'}</label>
+                              <div className="relative w-24 h-24 bg-white dark:bg-slate-800 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-500 flex items-center justify-center overflow-hidden group hover:border-indigo-500 transition-colors">
+                                  {userImage ? (
+                                      <>
+                                          <img src={userImage} alt="Preview" className="w-full h-full object-cover" />
+                                          <button 
+                                              type="button"
+                                              onClick={() => setUserImage(null)}
+                                              className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
+                                              title="Hapus Foto"
+                                          >
+                                              <X size={20} />
+                                          </button>
+                                      </>
+                                  ) : (
+                                      <div className="text-center text-slate-400 dark:text-slate-500 pointer-events-none">
+                                          <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                                          <span className="text-[9px] font-bold">Upload</span>
+                                      </div>
+                                  )}
+                                  <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      className="absolute inset-0 opacity-0 cursor-pointer"
+                                      onChange={handleUserImageUpload}
+                                  />
+                              </div>
+                          </div>
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Nama Lengkap</label>
@@ -672,7 +702,12 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                             <tbody className="divide-y dark:divide-slate-700">
                                 {users.map(u => (
                                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200">{u.name}</td>
+                                        <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200 flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
+                                                {u.image ? <img src={u.image} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">{u.name.charAt(0)}</div>}
+                                            </div>
+                                            {u.name}
+                                        </td>
                                         <td className="px-4 py-2 font-mono text-xs text-indigo-600 dark:text-indigo-400">
                                             {u.username} <span className="text-slate-400 ml-1">(Pwd: {u.password})</span>
                                         </td>
