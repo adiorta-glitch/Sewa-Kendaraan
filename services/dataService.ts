@@ -202,67 +202,77 @@ export const initializeData = async () => {
         localStorage.setItem(KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
     }
 
-    // 2. Integrasi Firebase
+    // 2. Integrasi Firebase (Non-Blocking / Offline First)
     if (db) {
-        try {
-            console.log("[Firebase] Connecting to cloud...");
-
-            // A. Sync Settings (Single Document)
+        const syncTask = async () => {
             try {
-                const settingsRef = doc(db, 'system', 'appSettings');
-                const settingsSnap = await getDoc(settingsRef);
-                if (settingsSnap.exists()) {
-                    console.log("[Firebase] Found cloud settings. Syncing DOWN...");
-                    const cloudSettings = settingsSnap.data() as AppSettings;
-                    localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cloudSettings));
+                console.log("[Firebase] Connecting to cloud...");
+
+                // A. Sync Settings (Single Document)
+                try {
+                    const settingsRef = doc(db, 'system', 'appSettings');
+                    const settingsSnap = await getDoc(settingsRef);
+                    if (settingsSnap.exists()) {
+                        console.log("[Firebase] Found cloud settings. Syncing DOWN...");
+                        const cloudSettings = settingsSnap.data() as AppSettings;
+                        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(cloudSettings));
+                    } else {
+                        // Jika cloud kosong, push settings default/lokal ke cloud
+                        console.log("[Firebase] Cloud settings empty. Syncing UP...");
+                        const localSettings = getStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
+                        await syncSettingsToCloud(localSettings);
+                    }
+                } catch (e) {
+                    console.warn("[Firebase] Settings sync warning:", e);
+                }
+
+                // B. Sync Collections (Arrays) - Added USERS
+                const collectionsToSync = [
+                    KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, 
+                    KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS, KEYS.USERS
+                ];
+
+                const carCol = collection(db, KEYS.CARS);
+                const carSnap = await getDocs(carCol);
+
+                if (!carSnap.empty) {
+                    console.log("[Firebase] Found cloud data. Syncing DOWN...");
+                    await Promise.all(collectionsToSync.map(async (key) => {
+                        const colRef = collection(db, key);
+                        const snapshot = await getDocs(colRef);
+                        if (!snapshot.empty) {
+                            const data = snapshot.docs.map(doc => doc.data());
+                            localStorage.setItem(key, JSON.stringify(data));
+                        }
+                    }));
                 } else {
-                    // Jika cloud kosong, push settings default/lokal ke cloud
-                    console.log("[Firebase] Cloud settings empty. Syncing UP...");
-                    const localSettings = getStoredData(KEYS.SETTINGS, DEFAULT_SETTINGS);
-                    await syncSettingsToCloud(localSettings);
+                    console.log("[Firebase] Cloud collections empty.");
+                    const hasLocalCars = localStorage.getItem(KEYS.CARS);
+                    if (hasLocalCars) {
+                        console.log("[Firebase] Local data found. Syncing UP to cloud...");
+                        for (const key of collectionsToSync) {
+                            const localData = getStoredData(key, []);
+                            if (localData.length > 0) {
+                                await syncToFirestore(key, localData);
+                            }
+                        }
+                    } else {
+                        console.log("[Firebase] Fresh install. Generating dummy data...");
+                        await generateDummyData();
+                    }
                 }
             } catch (e) {
-                console.warn("[Firebase] Settings sync warning:", e);
+                // Only log warning if truly offline/error
+                console.warn("[Firebase] Sync interrupted or offline:", e);
             }
+        };
 
-            // B. Sync Collections (Arrays) - Added USERS
-            const collectionsToSync = [
-                KEYS.CARS, KEYS.DRIVERS, KEYS.PARTNERS, KEYS.CUSTOMERS, 
-                KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS, KEYS.USERS
-            ];
-
-            const carCol = collection(db, KEYS.CARS);
-            const carSnap = await getDocs(carCol);
-
-            if (!carSnap.empty) {
-                console.log("[Firebase] Found cloud data. Syncing DOWN...");
-                await Promise.all(collectionsToSync.map(async (key) => {
-                    const colRef = collection(db, key);
-                    const snapshot = await getDocs(colRef);
-                    if (!snapshot.empty) {
-                        const data = snapshot.docs.map(doc => doc.data());
-                        localStorage.setItem(key, JSON.stringify(data));
-                    }
-                }));
-            } else {
-                console.log("[Firebase] Cloud collections empty.");
-                const hasLocalCars = localStorage.getItem(KEYS.CARS);
-                if (hasLocalCars) {
-                    console.log("[Firebase] Local data found. Syncing UP to cloud...");
-                    for (const key of collectionsToSync) {
-                        const localData = getStoredData(key, []);
-                        if (localData.length > 0) {
-                            await syncToFirestore(key, localData);
-                        }
-                    }
-                } else {
-                    console.log("[Firebase] Fresh install. Generating dummy data...");
-                    await generateDummyData();
-                }
-            }
-        } catch (e) {
-            console.error("[Firebase] Initialization error (Check config/rules):", e);
-        }
+        // RACE: Wait maximum 2.5s for sync. If timeout, proceed with local data (Offline Mode)
+        // Background sync might continue if the promise allows, but we unblock the UI.
+        await Promise.race([
+            syncTask(),
+            new Promise(resolve => setTimeout(resolve, 2500))
+        ]);
     }
     return true;
 };
