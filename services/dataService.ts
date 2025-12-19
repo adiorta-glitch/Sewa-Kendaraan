@@ -99,10 +99,15 @@ const syncToFirestore = async (key: string, data: any) => {
     try {
         const colRef = collection(db, key);
         
+        // PENTING: Firestore menolak 'undefined'. Kita harus membersihkannya.
+        // JSON.stringify secara otomatis menghapus key yang bernilai undefined.
+        // JSON.parse mengembalikannya menjadi objek bersih.
+        const cleanData = JSON.parse(JSON.stringify(data));
+
         // 1. Ambil data eksisting di Firestore untuk cek diff
         // NOTE: This might fail if offline or permissions are wrong
         const snapshot = await getDocs(colRef);
-        const newIds = new Set(data.map((item: any) => item.id));
+        const newIds = new Set(cleanData.map((item: any) => item.id));
         
         const operations: { type: 'set' | 'delete', ref: any, data?: any }[] = [];
 
@@ -114,7 +119,7 @@ const syncToFirestore = async (key: string, data: any) => {
         });
 
         // Identify Writes/Updates
-        data.forEach((item: any) => {
+        cleanData.forEach((item: any) => {
             if (item.id) {
                 const docRef = doc(db, key, item.id);
                 operations.push({ type: 'set', ref: docRef, data: item });
@@ -152,8 +157,11 @@ const syncToFirestore = async (key: string, data: any) => {
 const syncSettingsToCloud = async (settings: AppSettings) => {
     if (!db) return;
     try {
+        // Bersihkan undefined dari settings juga
+        const cleanSettings = JSON.parse(JSON.stringify(settings));
+        
         // Simpan sebagai dokumen tunggal 'system/appSettings'
-        await setDoc(doc(db, 'system', 'appSettings'), settings);
+        await setDoc(doc(db, 'system', 'appSettings'), cleanSettings);
         console.log("[Firebase] Settings synced to cloud.");
     } catch (e: any) {
         console.error("Error syncing settings:", e);
