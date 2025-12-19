@@ -241,8 +241,14 @@ export const initializeData = async () => {
                         const colRef = collection(db, key);
                         const snapshot = await getDocs(colRef);
                         if (!snapshot.empty) {
-                            const data = snapshot.docs.map(doc => doc.data());
-                            localStorage.setItem(key, JSON.stringify(data));
+                            const cloudData = snapshot.docs.map(doc => doc.data());
+                            
+                            // FIX: Merge with local data instead of overwriting
+                            // This prevents data loss if local has new items not yet in cloud
+                            const localData = getStoredData(key, []);
+                            const merged = mergeData(localData, cloudData);
+                            
+                            localStorage.setItem(key, JSON.stringify(merged));
                         }
                     }));
                 } else {
