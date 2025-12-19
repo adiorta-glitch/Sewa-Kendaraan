@@ -4,8 +4,10 @@ import { useSearchParams } from 'react-router-dom';
 import { AppSettings, User } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage, generateDummyData, clearAllData } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
-import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap, Loader2, ChevronDown, ChevronUp, BookOpen, AlertCircle } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap, Loader2, ChevronDown, ChevronUp, BookOpen, AlertCircle, Wifi } from 'lucide-react';
 import { Logo } from '../components/Logo';
+import { db } from '../services/firebaseConfig';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface Props {
     currentUser: User;
@@ -48,6 +50,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   
   // System Tools Loading State
   const [isProcessingSystem, setIsProcessingSystem] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [connectionError, setConnectionError] = useState('');
 
   // Users Form
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -218,6 +222,30 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       }
   };
 
+  const handleTestConnection = async () => {
+      setConnectionStatus('testing');
+      setConnectionError('');
+      try {
+          if (!db) throw new Error("Firebase SDK belum diinisialisasi.");
+          // Try writing a timestamp to a dedicated ping document
+          await setDoc(doc(db, 'system', 'connection_ping'), {
+              last_checked: new Date().toISOString(),
+              checked_by: currentUser.username
+          });
+          setConnectionStatus('success');
+      } catch (e: any) {
+          console.error("Connection Test Failed:", e);
+          setConnectionStatus('failed');
+          if (e.code === 'permission-denied') {
+              setConnectionError("Izin Ditolak (Permission Denied). Aturan Firebase belum diatur ke Publik.");
+          } else if (e.code === 'unavailable') {
+              setConnectionError("Offline / Tidak ada koneksi internet.");
+          } else {
+              setConnectionError(e.message || "Gagal terhubung.");
+          }
+      }
+  };
+
   const THEME_OPTIONS = [
       { id: 'red', name: 'Merah (Default)', bg: 'bg-red-600' },
       { id: 'blue', name: 'Biru', bg: 'bg-blue-600' },
@@ -262,6 +290,47 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                           <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Alat Sistem & Database</h3>
                           <p className="text-sm text-slate-500 dark:text-slate-400">Kelola database lokal dan reset data operasional.</p>
                       </div>
+                  </div>
+
+                  {/* FIREBASE CONNECTION TESTER */}
+                  <div className="p-6 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600">
+                      <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-lg text-white ${connectionStatus === 'success' ? 'bg-green-600' : connectionStatus === 'failed' ? 'bg-red-600' : 'bg-blue-600'}`}>
+                                  <Wifi size={20}/>
+                              </div>
+                              <div>
+                                  <h4 className="font-bold text-slate-800 dark:text-white">Status Koneksi Cloud (Firebase)</h4>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">Pastikan aplikasi terhubung agar data tersimpan aman.</p>
+                              </div>
+                          </div>
+                          <button 
+                              onClick={handleTestConnection} 
+                              disabled={connectionStatus === 'testing'}
+                              className="px-4 py-2 text-sm font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                          >
+                              {connectionStatus === 'testing' ? 'Sedang Mengecek...' : 'Cek Koneksi'}
+                          </button>
+                      </div>
+                      
+                      {connectionStatus === 'success' && (
+                          <div className="bg-green-100 border border-green-200 text-green-800 text-sm p-3 rounded-lg flex items-center gap-2">
+                              <Check size={16}/> Koneksi Sukses! Data tersinkronisasi dengan baik.
+                          </div>
+                      )}
+                      
+                      {connectionStatus === 'failed' && (
+                          <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-3 rounded-lg space-y-2">
+                              <div className="flex items-center gap-2 font-bold"><AlertCircle size={16}/> Koneksi Gagal!</div>
+                              <p>{connectionError}</p>
+                              {connectionError.includes("Izin Ditolak") && (
+                                  <div className="text-xs bg-white p-2 rounded border border-red-100 mt-2">
+                                      <strong>Solusi:</strong> Buka Firebase Console {'>'} Firestore Database {'>'} Rules. Ubah menjadi:
+                                      <code className="block bg-slate-100 p-1 mt-1 font-mono text-slate-700">allow read, write: if true;</code>
+                                  </div>
+                              )}
+                          </div>
+                      )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

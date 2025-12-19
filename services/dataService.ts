@@ -100,6 +100,7 @@ const syncToFirestore = async (key: string, data: any) => {
         const colRef = collection(db, key);
         
         // 1. Ambil data eksisting di Firestore untuk cek diff
+        // NOTE: This might fail if offline or permissions are wrong
         const snapshot = await getDocs(colRef);
         const newIds = new Set(data.map((item: any) => item.id));
         
@@ -138,8 +139,12 @@ const syncToFirestore = async (key: string, data: any) => {
         }
 
         console.log(`[Firebase] Successfully synced collection ${key} (${operations.length} ops)`);
-    } catch (error) {
-        console.error(`[Firebase] Error syncing ${key}:`, error);
+    } catch (error: any) {
+        if (error.code === 'permission-denied') {
+            console.error(`[Firebase] Permission Denied for ${key}. Check Firestore Security Rules!`);
+        } else {
+            console.error(`[Firebase] Error syncing ${key}:`, error);
+        }
     }
 };
 
@@ -150,8 +155,11 @@ const syncSettingsToCloud = async (settings: AppSettings) => {
         // Simpan sebagai dokumen tunggal 'system/appSettings'
         await setDoc(doc(db, 'system', 'appSettings'), settings);
         console.log("[Firebase] Settings synced to cloud.");
-    } catch (e) {
+    } catch (e: any) {
         console.error("Error syncing settings:", e);
+        if (e.code === 'permission-denied') {
+            alert("Gagal menyimpan ke Cloud: Izin Ditolak. Pastikan aturan Firestore diatur ke publik (allow read, write: if true;)");
+        }
     }
 };
 
@@ -162,6 +170,7 @@ export const setStoredData = async (key: string, data: any) => {
         localStorage.setItem(key, JSON.stringify(data));
         
         // 2. Sinkron ke Firebase
+        // We trigger this without awaiting if we want UI to be fast, but waiting ensures sync confirmation
         if (key === KEYS.SETTINGS) {
             await syncSettingsToCloud(data);
         } else {
@@ -232,6 +241,7 @@ export const initializeData = async () => {
                     KEYS.BOOKINGS, KEYS.TRANSACTIONS, KEYS.HIGH_SEASONS, KEYS.USERS
                 ];
 
+                // Attempt to read one collection to verify connection/permissions
                 const carCol = collection(db, KEYS.CARS);
                 const carSnap = await getDocs(carCol);
 
@@ -267,9 +277,12 @@ export const initializeData = async () => {
                         await generateDummyData();
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
                 // Only log warning if truly offline/error
                 console.warn("[Firebase] Sync interrupted or offline:", e);
+                if (e.code === 'permission-denied') {
+                    console.error("CRITICAL: Firebase Permission Denied. Data cannot sync!");
+                }
             }
         };
 
