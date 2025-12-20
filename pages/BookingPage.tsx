@@ -20,7 +20,7 @@ interface Props {
 const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list'); // Added viewMode state
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
   const [cars, setCars] = useState<Car[]>([]);
@@ -543,7 +543,11 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
 
       {activeTab === 'create' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-visible">
+             {/* ... FORM CONTENT SAMA SEPERTI SEBELUMNYA ... */}
              <form onSubmit={handleCreateBooking} className="grid grid-cols-1 lg:grid-cols-[1.2fr_2fr] min-h-[600px]">
+                {/* ... (Copy Form logic from previous response) ... */}
+                {/* Agar lebih ringkas, saya mempertahankan form input yang sudah Anda miliki di kode asli, hanya wrapping logic baru di sini jika perlu. */}
+                {/* ... Paste Full Form Logic Here ... */}
                 <div className="bg-slate-50/50 p-6 border-r border-slate-100 space-y-6">
                     <section className="space-y-4">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-[10px]"><ClockIcon size={16} className="text-indigo-600"/> Waktu & Unit</h4>
@@ -1020,7 +1024,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                 <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Posisi BBM</label><select className="w-full border-2 rounded-xl p-3 text-sm font-bold bg-white focus:border-indigo-500 outline-none" value={checkFuel} onChange={e => setCheckFuel(e.target.value)}><option value="Full">FULL</option><option value="3/4">3/4</option><option value="1/2">1/2</option><option value="1/4">1/4</option><option value="Empty">RESERVE</option></select></div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Foto Dashboard (Wajib)</label>
+                                <label className="block text-sm font-black text-slate-400 uppercase mb-2">Foto Dashboard (Wajib)</label>
                                 <div className="border-4 border-dashed border-slate-200 rounded-3xl p-6 text-center hover:bg-slate-50 relative h-56 flex flex-col items-center justify-center overflow-hidden">
                                     {checkSpeedometerImg ? <img src={checkSpeedometerImg} className="absolute inset-0 w-full h-full object-cover" /> : <div className="text-slate-400 opacity-50"><Gauge size={48} className="mx-auto mb-3" /><span className="text-xs font-black uppercase">Klik Untuk Upload</span></div>}
                                     <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleChecklistImageUpload('speedometer', e)} />
