@@ -40,7 +40,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
 
   useEffect(() => {
     const allTx = getStoredData<Transaction[]>('transactions', []);
-    setTransactions(allTx.filter(t => t.type === 'Expense'));
+    setTransactions(allTx.filter((t: Transaction) => t.type === 'Expense'));
     setDrivers(getStoredData<Driver[]>('drivers', []));
     setPartners(getStoredData<Partner[]>('partners', []));
     
@@ -121,13 +121,13 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
     let updated;
     
     if (editingId) {
-        updated = allTx.map(t => t.id === editingId ? newTx : t);
+        updated = allTx.map((t: Transaction) => t.id === editingId ? newTx : t);
     } else {
         updated = [newTx, ...allTx];
     }
     
     setStoredData('transactions', updated);
-    setTransactions(updated.filter(t => t.type === 'Expense'));
+    setTransactions(updated.filter((t: Transaction) => t.type === 'Expense'));
     setIsModalOpen(false);
     resetForm();
   };
@@ -174,11 +174,11 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   };
 
   const handleDelete = (id: string) => {
-      if (window.confirm('Konfirmasi Persetujuan: Apakah Anda yakin ingin menghapus data transaksi ini secara permanen? Tindakan ini hanya dapat dilakukan dengan wewenang Superadmin.')) {
+      if (window.confirm('Apakah Anda yakin ingin menghapus data transaksi ini?')) {
           const allTx = getStoredData<Transaction[]>('transactions', []);
-          const updatedStorage = allTx.filter(t => t.id !== id);
+          const updatedStorage = allTx.filter((t: Transaction) => t.id !== id);
           setStoredData('transactions', updatedStorage);
-          setTransactions(updatedStorage.filter(t => t.type === 'Expense'));
+          setTransactions(updatedStorage.filter((t: Transaction) => t.type === 'Expense'));
       }
   };
 
@@ -197,7 +197,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   let displayedTransactions = transactions;
   
   if (filterStartDate || filterEndDate) {
-      displayedTransactions = displayedTransactions.filter(t => {
+      displayedTransactions = displayedTransactions.filter((t: Transaction) => {
           const start = filterStartDate || '0000-00-00';
           const end = filterEndDate || '9999-12-31';
           return t.date >= start && t.date <= end;
@@ -205,22 +205,22 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
   }
 
   if (filterCategory !== 'All') {
-      displayedTransactions = displayedTransactions.filter(t => t.category === filterCategory);
+      displayedTransactions = displayedTransactions.filter((t: Transaction) => t.category === filterCategory);
   }
 
   if (filterTxStatus !== 'All') {
-      displayedTransactions = displayedTransactions.filter(t => t.status === filterTxStatus);
+      displayedTransactions = displayedTransactions.filter((t: Transaction) => t.status === filterTxStatus);
   }
   
   if (isDriverView) {
       if (currentUser?.linkedDriverId) {
-          displayedTransactions = displayedTransactions.filter(t => t.relatedId === currentUser.linkedDriverId);
+          displayedTransactions = displayedTransactions.filter((t: Transaction) => t.relatedId === currentUser.linkedDriverId);
       } else {
-           displayedTransactions = displayedTransactions.filter(t => t.category === 'Reimbursement' || t.category === 'BBM' || t.category === 'Tol/Parkir');
+           displayedTransactions = displayedTransactions.filter((t: Transaction) => t.category === 'Reimbursement' || t.category === 'BBM' || t.category === 'Tol/Parkir');
       }
   } else if (isPartnerView) {
       if (currentUser?.linkedPartnerId) {
-          displayedTransactions = displayedTransactions.filter(t => t.category === 'Setor Mitra' && t.relatedId === currentUser.linkedPartnerId);
+          displayedTransactions = displayedTransactions.filter((t: Transaction) => t.category === 'Setor Mitra' && t.relatedId === currentUser.linkedPartnerId);
       }
   }
 
@@ -258,7 +258,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
         
         <div className="flex flex-wrap gap-2 items-center">
             {!isDriverView && !isPartnerView && (
-                <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full md:w-auto">
+                <div className="hidden md:flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
                     <span className="text-sm font-bold text-slate-700 px-2 flex items-center gap-1"><Filter size={14}/> Filter:</span>
                     <input type="date" className="border rounded px-2 py-1 text-sm text-slate-600" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                     <span className="text-slate-400">-</span>
@@ -325,7 +325,7 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
                     {displayedTransactions.length === 0 ? (
                          <tr><td colSpan={6} className="text-center py-8 text-slate-500 italic">Belum ada data.</td></tr>
                     ) : (
-                        displayedTransactions.map(t => {
+                        displayedTransactions.map((t: Transaction) => {
                             const entityName = getEntityName(t.relatedId);
                             return (
                                 <tr key={t.id} className="hover:bg-slate-50">

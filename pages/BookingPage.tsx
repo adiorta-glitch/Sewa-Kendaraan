@@ -5,10 +5,10 @@ import {
   Image as ImageIcon, X, FileText, ClipboardCheck, Fuel, 
   Gauge, Car as CarIcon, Edit2, FileSpreadsheet, ChevronDown, 
   Filter, Info, Send, Wallet, CheckSquare, Clock as ClockIcon,
-  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle, BarChart2, List as ListIcon
+  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle, BarChart2, List as ListIcon, Share2
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { getStoredData, setStoredData, checkAvailability, DEFAULT_SETTINGS, compressImage } from '../services/dataService';
 import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist } from '../types';
 import { generateInvoicePDF, generateWhatsAppLink, generateDriverTaskLink } from '../services/pdfService';
@@ -18,9 +18,12 @@ interface Props {
 }
 
 const BookingPage: React.FC<Props> = ({ currentUser }) => {
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  // v5 doesn't have useSearchParams, so we use URLSearchParams manually if needed, or just ignore if not strictly used for logic here.
+  // Assuming no query params needed for this page logic, or if they are, they can be parsed from location.search
+  
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list'); // Added viewMode state
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list'); 
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
   const [cars, setCars] = useState<Car[]>([]);
@@ -51,7 +54,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   // SECURITY DEPOSIT STATE
   const [depositType, setDepositType] = useState<'Barang' | 'Uang'>('Barang');
   const [depositDescription, setDepositDescription] = useState('');
-  const [depositValue, setDepositValue] = useState<string>(''); // string for easier input handling
+  const [depositValue, setDepositValue] = useState<string>(''); 
   const [depositImage, setDepositImage] = useState<string | null>(null);
   const [isUploadingDeposit, setIsUploadingDeposit] = useState(false);
 
@@ -146,7 +149,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       }
   }, [selectedCarId, packageType, cars, editingBookingId]);
 
-  // Separate Effect for Auto Overdue Calculation
   useEffect(() => {
     if (actualReturnDate && actualReturnTime && endDate && endTime) {
         const actual = new Date(`${actualReturnDate}T${actualReturnTime}`);
@@ -154,7 +156,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         if (actual > scheduled) {
             const diffMs = actual.getTime() - scheduled.getTime();
             const overdueHours = Math.ceil(diffMs / (1000 * 60 * 60));
-            // 10% per hour penalty default
             const calculated = overdueHours * ((customBasePrice || 0) / 10);
             setOvertimeFee(calculated);
         } else {
@@ -175,7 +176,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
 
     if (selectedCarId) {
       const isCarAvailable = checkAvailability(bookings, selectedCarId, start, end, 'car', editingBookingId || undefined);
-      setCarError(isCarAvailable ? '' : 'Unit tidak tersedia di tanggal/jam ini!');
+      setCarError(isCarAvailable ? '' : 'Unit tidak tersedia (Jadwal Bentrok)!');
     } else {
         setCarError('');
     }
@@ -198,7 +199,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
             if (start < hsEnd && end > hsStart) hsFee += hs.priceIncrease * diffDays;
         });
 
-        // Sum everything including manual/auto overdue and extra costs
         const total = totalBase + totalDriver + hsFee + deliveryFee + overtimeFee + extraCost;
         setPricing({ 
             basePrice: totalBase, 
@@ -230,7 +230,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       setSelectedDriverId(booking.driverId || '');
       setDriverNote(booking.driverNote || '');
       
-      // Deposit Data
       setDepositType(booking.securityDepositType || 'Barang');
       setDepositValue(booking.securityDepositValue ? booking.securityDepositValue.toString() : '');
       setDepositDescription(booking.securityDepositDescription || '');
@@ -343,9 +342,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const resetForm = () => {
     setEditingBookingId(null); setSelectedCarId(''); setStartDate(''); setEndDate('');
     setUseDriver(false); setSelectedDriverId(''); setDriverNote('');
-    // Reset Deposit
     setDepositType('Barang'); setDepositValue(''); setDepositDescription(''); setDepositImage(null);
-    
     setSelectedCustomerId(''); setCustomerName(''); setCustomerPhone(''); setPackageType(settings.rentalPackages[0]);
     setDestination('Dalam Kota'); setCustomerNote(''); setCustomBasePrice(0); setDeliveryFee(0);
     setAmountPaid('0'); setActualReturnDate(''); setActualReturnTime(''); setOvertimeFee(0);
@@ -497,20 +494,9 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       [BookingStatus.MAINTENANCE]: 5
   };
 
-  // TIMELINE LOGIC
-  const getTimelineDates = () => {
-      const dates = [];
-      const start = filterStartDate ? new Date(filterStartDate) : new Date();
-      for(let i=0; i<14; i++) {
-          const d = new Date(start);
-          d.setDate(d.getDate() + i);
-          dates.push(d);
-      }
-      return dates;
-  };
-
   return (
     <div className="space-y-6">
+      {/* ... Header Section Code ... */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-800">Booking & Jadwal</h2>
@@ -528,6 +514,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         </div>
       )}
 
+      {/* View Mode Toggles */}
       {activeTab === 'list' && (
           <div className="flex justify-end">
              <div className="bg-slate-100 p-1 rounded-lg flex border border-slate-200">
@@ -541,15 +528,14 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
           </div>
       )}
 
+      {/* Main Content Areas */}
       {activeTab === 'create' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-visible">
-             {/* ... FORM CONTENT SAMA SEPERTI SEBELUMNYA ... */}
              <form onSubmit={handleCreateBooking} className="grid grid-cols-1 lg:grid-cols-[1.2fr_2fr] min-h-[600px]">
-                {/* ... (Copy Form logic from previous response) ... */}
-                {/* Agar lebih ringkas, saya mempertahankan form input yang sudah Anda miliki di kode asli, hanya wrapping logic baru di sini jika perlu. */}
-                {/* ... Paste Full Form Logic Here ... */}
+                {/* ... Left Column ... */}
                 <div className="bg-slate-50/50 p-6 border-r border-slate-100 space-y-6">
                     <section className="space-y-4">
+                        {/* ... Date & Time Inputs ... */}
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-[10px]"><ClockIcon size={16} className="text-indigo-600"/> Waktu & Unit</h4>
                         <div className="space-y-3">
                             <div className="space-y-1">
@@ -567,9 +553,10 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                 </div>
                             </div>
                         </div>
+                        {/* ... Car Selector ... */}
                         <div className="relative" ref={dropdownRef}>
                              <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Pilih Mobil</label>
-                             <div onClick={() => setIsCarDropdownOpen(!isCarDropdownOpen)} className={`w-full border rounded-xl p-3 cursor-pointer flex items-center justify-between transition-all ${carError ? 'border-red-500 bg-red-50' : 'bg-white hover:border-indigo-400 shadow-sm'}`}>
+                             <div onClick={() => setIsCarDropdownOpen(!isCarDropdownOpen)} className={`w-full border rounded-xl p-3 cursor-pointer flex items-center justify-between transition-all ${carError ? 'border-red-500 bg-red-50 ring-2 ring-red-200' : 'bg-white hover:border-indigo-400 shadow-sm'}`}>
                                 {selectedCarData ? (
                                     <div className="flex items-center gap-3">
                                         <img src={selectedCarData.image} className="w-10 h-7 object-cover rounded shadow-sm" />
@@ -587,16 +574,24 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                     }).map(car => {
                                         const isAvailable = (!startDate || !endDate) ? true : checkAvailability(bookings, car.id, new Date(`${startDate}T${startTime}`), new Date(`${endDate}T${endTime}`), 'car', editingBookingId || undefined);
                                         return (
-                                            <div key={car.id} onClick={() => isAvailable && (setSelectedCarId(car.id), setIsCarDropdownOpen(false))} className={`p-3 border-b last:border-0 flex items-center gap-4 transition-colors ${!isAvailable ? 'bg-slate-100 opacity-60 cursor-not-allowed grayscale' : 'hover:bg-indigo-50 cursor-pointer'}`}>
+                                            <div key={car.id} onClick={() => isAvailable && (setSelectedCarId(car.id), setIsCarDropdownOpen(false))} className={`p-3 border-b last:border-0 flex items-center gap-4 transition-colors ${!isAvailable ? 'bg-red-50 opacity-60 cursor-not-allowed border-l-4 border-red-500' : 'hover:bg-indigo-50 cursor-pointer border-l-4 border-transparent'}`}>
                                                 <img src={car.image} className="w-12 h-8 object-cover rounded shadow-sm" />
-                                                <div className="flex-1"><p className="font-bold text-xs text-slate-800">{car.name}</p><p className="text-[9px] text-slate-500">{car.plate}</p></div>
-                                                {!isAvailable ? <span className="text-[8px] bg-red-100 text-red-600 px-2 py-1 rounded-full font-black uppercase tracking-wide">BENTROK</span> : <span className="text-[8px] bg-green-100 text-green-600 px-2 py-1 rounded-full font-bold uppercase">AVAILABLE</span>}
+                                                <div className="flex-1">
+                                                    <p className="font-bold text-xs text-slate-800">{car.name}</p>
+                                                    <p className="text-[9px] text-slate-500">{car.plate}</p>
+                                                </div>
+                                                {!isAvailable ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[8px] bg-red-600 text-white px-2 py-1 rounded font-black uppercase tracking-wide">TERPAKAI</span>
+                                                        <span className="text-[8px] text-red-600 font-bold mt-0.5">Jadwal Bentrok</span>
+                                                    </div>
+                                                ) : <span className="text-[8px] bg-green-100 text-green-600 px-2 py-1 rounded-full font-bold uppercase">AVAILABLE</span>}
                                             </div>
                                         );
                                     })}
                                 </div>
                              )}
-                             {carError && <p className="text-red-600 text-[10px] font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> {carError}</p>}
+                             {carError && <p className="text-red-600 text-[10px] font-bold mt-2 flex items-center gap-1 bg-red-50 p-2 rounded border border-red-100"><AlertTriangle size={12}/> {carError}</p>}
                         </div>
                     </section>
                     <section className="space-y-4 pt-4 border-t">
@@ -620,8 +615,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                              )}
                         </div>
                     </section>
-                    
-                    {/* SECURITY DEPOSIT SECTION */}
                     <section className="space-y-4 pt-4 border-t">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest text-[10px]"><Shield size={16} className="text-indigo-600"/> Jaminan (Security Deposit)</h4>
                         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm space-y-3">
@@ -663,8 +656,10 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                         </div>
                     </section>
                 </div>
+                
+                {/* ... Right Column (Customer, Fees, Buttons) ... */}
                 <div className="p-8 space-y-8 overflow-y-auto">
-                    {/* ... (Existing sections for Customer, Summary, Payment, Return) ... */}
+                    {/* ... Customer Data ... */}
                     <section className="space-y-5">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-xs"><UserIcon size={18} className="text-indigo-600"/> 1. Data Pelanggan</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -686,7 +681,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Paket Sewa</label>
                                 <select className="w-full border rounded-xl p-2.5 text-sm font-bold" value={packageType} onChange={e => setPackageType(e.target.value)}>
-                                    {settings.rentalPackages.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {settings.rentalPackages.map((p: string) => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div className="space-y-1">
@@ -702,6 +697,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             </div>
                         </div>
                     </section>
+                    
+                    {/* ... Summary & Payments Sections (Same as before) ... */}
                     <section className="space-y-5">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-xs"><Zap size={18} className="text-indigo-600"/> 2. Summary & Biaya</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
@@ -735,6 +732,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             </div>
                         </div>
                     </section>
+                    
                     <section className="space-y-5">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-xs"><Wallet size={18} className="text-indigo-600"/> 3. Pembayaran</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -753,6 +751,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             </div>
                         </div>
                     </section>
+
                     <section className="space-y-5 bg-red-50/30 p-6 rounded-2xl border border-red-100">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b border-red-200 pb-3 uppercase tracking-widest text-xs"><History size={18} className="text-red-600"/> 4. Pengembalian Unit</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -805,6 +804,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
              </form>
         </div>
       ) : (
+        /* LIST VIEW & TIMELINE RENDER LOGIC REMAINS SAME BUT WITH TS FIXES IF NEEDED */
         <div className="space-y-4">
             {/* Filter Section */}
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-wrap gap-4 items-center shadow-sm">
@@ -841,6 +841,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                         const isDue = b.totalPrice > b.amountPaid;
                         const diffDays = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
+                        // ... Styling helper functions ...
                         const getStatusColorClass = (status: BookingStatus) => {
                             switch(status) {
                                 case BookingStatus.BOOKED: return 'bg-orange-500 text-white';
@@ -928,8 +929,12 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                         </button>
                                     )}
                                     <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
-                                    <button type="button" onClick={() => window.open(generateWhatsAppLink(b, car!), '_blank')} className="p-2.5 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors border border-green-100"><MessageCircle size={20}/></button>
-                                    <button type="button" onClick={() => generateInvoicePDF(b, car!)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100"><Zap size={20}/></button>
+                                    <button type="button" onClick={() => window.open(generateWhatsAppLink(b, car!), '_blank')} className="flex items-center gap-2 p-2.5 px-3 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors border border-green-100 text-xs font-bold">
+                                        <MessageCircle size={18}/> <span className="hidden sm:inline">Kirim WA</span>
+                                    </button>
+                                    <button type="button" onClick={() => generateInvoicePDF(b, car!)} className="flex items-center gap-2 p-2.5 px-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100 text-xs font-bold">
+                                        <FileText size={18}/> <span className="hidden sm:inline">PDF Invoice</span>
+                                    </button>
                                     <button type="button" onClick={() => handleEdit(b)} className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 border border-slate-100"><Edit2 size={20}/></button>
                                     {b.status !== BookingStatus.CANCELLED && <button type="button" onClick={() => openChecklistModal(b)} className={`p-2.5 rounded-xl border ${b.checklist ? 'bg-green-600 text-white border-green-700' : 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100 border-yellow-100'}`}><ClipboardCheck size={20}/></button>}
                                     {isSuperAdmin && <button type="button" onClick={() => handleDelete(b.id)} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 border border-slate-100"><Trash2 size={20}/></button>}

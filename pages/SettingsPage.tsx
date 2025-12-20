@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { AppSettings, User, Driver, Partner } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage, generateDummyData, clearAllData } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
@@ -37,7 +37,8 @@ const FaqItem = ({ question, answer }: { question: string, answer: React.ReactNo
 };
 
 const SettingsPage: React.FC<Props> = ({ currentUser }) => {
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
   const isSuperAdmin = currentUser.role === 'superadmin';
   
   // Initialize tab from URL param or default
@@ -89,7 +90,7 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       if (tabParam) {
           setActiveTab(tabParam);
       }
-  }, [searchParams]);
+  }, [location.search]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -790,85 +791,78 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
 
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Username</label>
-                                <input required value={username} onChange={e => setUsername(e.target.value)} className="w-full border rounded p-2" placeholder="Username Login" />
+                                <input required value={username} onChange={e => setUsername(e.target.value)} className="w-full border rounded p-2" placeholder="username_login" />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Password</label>
-                                <input required type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full border rounded p-2" placeholder="Password Login" />
+                                <div className="relative">
+                                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full border rounded p-2" placeholder="••••••" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Email (Optional)</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border rounded p-2" placeholder="email@company.com" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">No. HP (Optional)</label>
+                                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border rounded p-2" placeholder="08xxxxxxxx" />
                             </div>
                           </div>
 
-                          <div className="flex gap-2 mt-2">
+                          <div className="pt-4 border-t dark:border-slate-700 flex gap-2">
                               {editingUserId && (
-                                  <button type="button" onClick={resetUserForm} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded font-bold hover:bg-slate-300">
-                                      Batal
-                                  </button>
+                                  <button type="button" onClick={resetUserForm} className="px-4 py-2 bg-slate-100 dark:bg-slate-600 text-slate-600 dark:text-slate-200 rounded-lg font-bold">Batal</button>
                               )}
-                              <button disabled={isUploading} type="submit" className={`flex-1 ${editingUserId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded font-bold flex items-center justify-center gap-2 disabled:opacity-50`}>
-                                    {editingUserId ? <Save size={18} /> : <Plus size={18}/>}
-                                    {editingUserId ? 'Simpan Perubahan' : 'Tambah User'}
+                              <button type="submit" disabled={isUploading} className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50">
+                                  {isUploading ? 'Memproses...' : (editingUserId ? 'Simpan Perubahan' : 'Simpan User')}
                               </button>
                           </div>
                       </form>
                   </div>
 
-                  <div>
-                      <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-slate-200">Daftar User Sistem</h3>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 border dark:border-slate-700">
-                            <thead className="bg-slate-50 dark:bg-slate-700">
-                                <tr>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Nama</th>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Akun</th>
-                                    <th className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Role</th>
-                                    <th className="px-4 py-2 text-right text-xs font-bold text-slate-500 dark:text-slate-300 uppercase">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y dark:divide-slate-700">
-                                {users.map(u => {
-                                    const linkedName = u.role === 'driver' && u.linkedDriverId 
-                                        ? driversList.find(d => d.id === u.linkedDriverId)?.name 
-                                        : u.role === 'partner' && u.linkedPartnerId 
-                                        ? partnersList.find(p => p.id === u.linkedPartnerId)?.name 
-                                        : null;
-
-                                    return (
-                                        <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                            <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200 flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
-                                                    {u.image ? <img src={u.image} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">{u.name.charAt(0)}</div>}
-                                                </div>
-                                                <div>
-                                                    {u.name}
-                                                    {linkedName && (
-                                                        <span className="block text-[10px] text-slate-500 flex items-center gap-1">
-                                                            <LinkIcon size={8}/> Linked: {linkedName}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-2 font-mono text-xs text-indigo-600 dark:text-indigo-400">
-                                                {u.username} <span className="text-slate-400 ml-1">(Pwd: {u.password})</span>
-                                            </td>
-                                            <td className="px-4 py-2 capitalize">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                                                    {u.role}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-2 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    <button onClick={() => handleEditUser(u)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 dark:bg-indigo-900/30 rounded"><Edit size={16}/></button>
-                                                    {u.id !== currentUser.id && (
-                                                        <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:text-red-800 p-1 bg-red-50 dark:bg-red-900/30 rounded"><Trash2 size={16}/></button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                      </div>
+                  <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden">
+                      <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                          <thead className="bg-slate-50 dark:bg-slate-700">
+                              <tr>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">User</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Role</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Kontak</th>
+                                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Aksi</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                              {users.map(u => (
+                                  <tr key={u.id}>
+                                      <td className="px-6 py-4 whitespace-nowrap">
+                                          <div className="flex items-center">
+                                              <div className="flex-shrink-0 h-10 w-10">
+                                                  <img className="h-10 w-10 rounded-full object-cover bg-slate-100" src={u.image || `https://ui-avatars.com/api/?name=${u.name}`} alt="" />
+                                              </div>
+                                              <div className="ml-4">
+                                                  <div className="text-sm font-medium text-slate-900 dark:text-white">{u.name}</div>
+                                                  <div className="text-sm text-slate-500 dark:text-slate-400">@{u.username}</div>
+                                              </div>
+                                          </div>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap">
+                                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800 uppercase">
+                                              {u.role}
+                                          </span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+                                          <div>{u.email}</div>
+                                          <div>{u.phone}</div>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                          <button onClick={() => handleEditUser(u)} className="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
+                                          {u.id !== currentUser.id && (
+                                              <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:text-red-900">Hapus</button>
+                                          )}
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
                   </div>
               </div>
           )}

@@ -1,11 +1,12 @@
 
 // @ts-ignore
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getFirestore, 
   initializeFirestore, 
   persistentLocalCache, 
-  persistentMultipleTabManager 
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED
 } from "firebase/firestore";
 // @ts-ignore
 import { getAnalytics } from "firebase/analytics";
@@ -23,34 +24,47 @@ const firebaseConfig = {
 
 let db: any = null;
 let analytics: any = null;
+let app: any = null;
 
 try {
-    // Initialize Firebase
-    // @ts-ignore
-    const app = initializeApp(firebaseConfig);
+    // Initialize Firebase (Singleton pattern to prevent HMR errors)
+    if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+    } else {
+        app = getApp();
+    }
     
     // Initialize Firestore
-    // Using gstatic imports guarantees components are registered correctly
     if (app) {
         try {
-            // Try enabling offline persistence (preferred)
+            // Attempt to initialize with offline persistence
+            // Note: This will throw if Firestore is already initialized (e.g. during fast refresh)
             db = initializeFirestore(app, {
                 localCache: persistentLocalCache({
-                    tabManager: persistentMultipleTabManager()
+                    tabManager: persistentMultipleTabManager(),
+                    cacheSizeBytes: CACHE_SIZE_UNLIMITED
                 })
             });
             console.log("[Firebase] Persistence enabled.");
-        } catch (e) {
-            console.warn("[Firebase] Persistence initialization failed (likely multiple tabs open or unsupported environment). Falling back to standard memory cache.", e);
-            // Fallback to standard initialization if persistence fails
-            db = getFirestore(app);
+        } catch (e: any) {
+            // If already initialized or persistence fails, fallback to existing instance
+            if (e.code === 'failed-precondition' || e.message?.includes('already been initialized')) {
+                 db = getFirestore(app);
+            } else {
+                console.warn("[Firebase] Persistence initialization failed. Falling back to standard.", e);
+                try {
+                    db = getFirestore(app);
+                } catch (innerError) {
+                    console.error("[Firebase] Fatal: Could not get Firestore instance.", innerError);
+                }
+            }
         }
 
         // @ts-ignore
         try {
             analytics = getAnalytics(app);
         } catch (e) {
-            console.log("[Firebase] Analytics skipped (AdBlocker or Environment issue).");
+            console.log("[Firebase] Analytics skipped.");
         }
         
         console.log("[Firebase] Initialized successfully.");
