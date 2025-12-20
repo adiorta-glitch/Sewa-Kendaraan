@@ -38,6 +38,7 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSuperAdmin = currentUser.role === 'superadmin';
+  const isDriverView = currentUser.role === 'driver';
 
   useEffect(() => {
     setDrivers(getStoredData<Driver[]>('drivers', []));
@@ -189,31 +190,40 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
       }
   };
 
+  // FILTERED DRIVER LIST (For Driver View)
+  const displayedDrivers = isDriverView 
+    ? drivers.filter(d => d.id === currentUser.linkedDriverId)
+    : drivers;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800">Manajemen Driver</h2>
-          <p className="text-slate-500">Kelola data supir, foto dan tarif harian.</p>
+          <h2 className="text-3xl font-bold text-slate-800">{isDriverView ? 'Profil Saya' : 'Manajemen Driver'}</h2>
+          <p className="text-slate-500">{isDriverView ? 'Informasi profil dan statistik kinerja Anda.' : 'Kelola data supir, foto dan tarif harian.'}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-            <div className="hidden md:flex gap-2 mr-2">
-                <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportFile} />
-                <button onClick={handleImportClick} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium">
-                    <Upload size={16} /> Import
-                </button>
-                <button onClick={handleExport} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium">
-                    <Download size={16} /> Export
+        
+        {/* Hide Actions for Driver View */}
+        {!isDriverView && (
+            <div className="flex flex-wrap gap-2">
+                <div className="hidden md:flex gap-2 mr-2">
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportFile} />
+                    <button onClick={handleImportClick} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium">
+                        <Upload size={16} /> Import
+                    </button>
+                    <button onClick={handleExport} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium">
+                        <Download size={16} /> Export
+                    </button>
+                </div>
+                <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <Plus size={18} /> Tambah Driver
                 </button>
             </div>
-            <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                <Plus size={18} /> Tambah Driver
-            </button>
-        </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {drivers.map(driver => (
+        {displayedDrivers.map(driver => (
             <div key={driver.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow p-5">
                 <div className="flex items-center gap-4 mb-4">
                     <img src={driver.image} alt={driver.name} className="w-16 h-16 rounded-full bg-slate-200 object-cover border-2 border-slate-100" />
@@ -237,16 +247,18 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
                     <button onClick={() => openHistoryModal(driver)} className="w-full py-2 text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium">
                         <History size={16} /> Riwayat & Detail
                     </button>
-                    <div className="flex gap-2">
-                        <button onClick={() => openModal(driver)} className="flex-1 py-2 text-sm text-slate-600 hover:bg-slate-50 border rounded-lg flex items-center justify-center gap-2">
-                            <Edit2 size={16} /> Edit
-                        </button>
-                        {isSuperAdmin && (
-                            <button onClick={() => handleDelete(driver.id)} className="flex-1 py-2 text-sm text-red-600 hover:bg-red-50 border border-red-100 rounded-lg flex items-center justify-center gap-2">
-                                <Trash2 size={16} /> Hapus
+                    {!isDriverView && (
+                        <div className="flex gap-2">
+                            <button onClick={() => openModal(driver)} className="flex-1 py-2 text-sm text-slate-600 hover:bg-slate-50 border rounded-lg flex items-center justify-center gap-2">
+                                <Edit2 size={16} /> Edit
                             </button>
-                        )}
-                    </div>
+                            {isSuperAdmin && (
+                                <button onClick={() => handleDelete(driver.id)} className="flex-1 py-2 text-sm text-red-600 hover:bg-red-50 border border-red-100 rounded-lg flex items-center justify-center gap-2">
+                                    <Trash2 size={16} /> Hapus
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         ))}
@@ -354,7 +366,7 @@ const DriversPage: React.FC<Props> = ({ currentUser }) => {
                         </button>
                     </div>
 
-                    {/* Filter Tanggal (Show for both tabs, but contextually more important for expenses report) */}
+                    {/* Filter Tanggal */}
                     <div className="flex items-center gap-2 mb-4 bg-slate-50 p-2 rounded-lg border border-slate-200">
                         <Filter size={14} className="text-slate-500 ml-1" />
                         <span className="text-xs font-bold text-slate-700">Filter Tanggal:</span>

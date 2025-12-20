@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AppSettings, User } from '../types';
+import { AppSettings, User, Driver, Partner } from '../types';
 import { getStoredData, setStoredData, DEFAULT_SETTINGS, compressImage, generateDummyData, clearAllData } from '../services/dataService';
 import { getUsers, saveUser, deleteUser } from '../services/authService';
-import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap, Loader2, ChevronDown, ChevronUp, BookOpen, AlertCircle, Wifi } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, List, Shield, UserCog, Check, X, MessageCircle, Eye, EyeOff, Image as ImageIcon, Plus, Edit, HelpCircle, Palette, Moon, Sun, MapPin, Database, Zap, Loader2, ChevronDown, ChevronUp, BookOpen, AlertCircle, Wifi, Link as LinkIcon } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { db } from '../services/firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
@@ -45,6 +45,11 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [users, setUsers] = useState<User[]>([]);
+  
+  // Reference Data for Linking
+  const [driversList, setDriversList] = useState<Driver[]>([]);
+  const [partnersList, setPartnersList] = useState<Partner[]>([]);
+
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -63,6 +68,10 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   const [role, setRole] = useState('admin');
   const [userImage, setUserImage] = useState<string | null>(null);
   
+  // User Linking State
+  const [linkedDriverId, setLinkedDriverId] = useState('');
+  const [linkedPartnerId, setLinkedPartnerId] = useState('');
+  
   // Master Data State
   const [newCategory, setNewCategory] = useState('');
   const [newPackage, setNewPackage] = useState('');
@@ -70,6 +79,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
   useEffect(() => {
     setSettings(getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS));
     setUsers(getUsers());
+    setDriversList(getStoredData<Driver[]>('drivers', []));
+    setPartnersList(getStoredData<Partner[]>('partners', []));
   }, []);
 
   // Sync tab with URL param changes
@@ -144,6 +155,10 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setRole(u.role);
       setUserImage(u.image || null);
       
+      // Set Linked IDs based on user data
+      setLinkedDriverId(u.linkedDriverId || '');
+      setLinkedPartnerId(u.linkedPartnerId || '');
+      
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -156,6 +171,8 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
       setPhone(''); 
       setUserImage(null); 
       setRole('admin');
+      setLinkedDriverId('');
+      setLinkedPartnerId('');
   };
 
   const handleSaveUser = (e: React.FormEvent) => {
@@ -170,7 +187,10 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
           email,
           phone,
           role: role as any,
-          image: userImage
+          image: userImage,
+          // Only save linkage if role matches
+          linkedDriverId: role === 'driver' ? linkedDriverId : undefined,
+          linkedPartnerId: role === 'partner' ? linkedPartnerId : undefined
       };
 
       saveUser(userPayload);
@@ -732,6 +752,42 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                     <option value="superadmin">Super Admin</option>
                                 </select>
                             </div>
+                            
+                            {/* DYNAMIC LINKING FIELDS */}
+                            {role === 'driver' && (
+                                <div className="md:col-span-2 bg-yellow-50 border border-yellow-100 p-3 rounded-lg animate-in fade-in slide-in-from-top-2">
+                                    <label className="block text-xs font-bold uppercase text-yellow-800 mb-1 flex items-center gap-1">
+                                        <LinkIcon size={12}/> Hubungkan dengan Data Driver
+                                    </label>
+                                    <select value={linkedDriverId} onChange={e => setLinkedDriverId(e.target.value)} className="w-full border border-yellow-300 rounded p-2 text-sm">
+                                        <option value="">-- Pilih Data Driver --</option>
+                                        {driversList.map(d => (
+                                            <option key={d.id} value={d.id}>{d.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-yellow-700 mt-1">
+                                        *User ini hanya akan melihat tugas dan pendapatan milik Driver yang dipilih.
+                                    </p>
+                                </div>
+                            )}
+
+                            {role === 'partner' && (
+                                <div className="md:col-span-2 bg-purple-50 border border-purple-100 p-3 rounded-lg animate-in fade-in slide-in-from-top-2">
+                                    <label className="block text-xs font-bold uppercase text-purple-800 mb-1 flex items-center gap-1">
+                                        <LinkIcon size={12}/> Hubungkan dengan Data Mitra
+                                    </label>
+                                    <select value={linkedPartnerId} onChange={e => setLinkedPartnerId(e.target.value)} className="w-full border border-purple-300 rounded p-2 text-sm">
+                                        <option value="">-- Pilih Data Mitra --</option>
+                                        {partnersList.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-purple-700 mt-1">
+                                        *User ini hanya akan melihat unit mobil dan laporan keuangan milik Mitra yang dipilih.
+                                    </p>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Username</label>
                                 <input required value={username} onChange={e => setUsername(e.target.value)} className="w-full border rounded p-2" placeholder="Username Login" />
@@ -769,32 +825,47 @@ const SettingsPage: React.FC<Props> = ({ currentUser }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y dark:divide-slate-700">
-                                {users.map(u => (
-                                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200 flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
-                                                {u.image ? <img src={u.image} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">{u.name.charAt(0)}</div>}
-                                            </div>
-                                            {u.name}
-                                        </td>
-                                        <td className="px-4 py-2 font-mono text-xs text-indigo-600 dark:text-indigo-400">
-                                            {u.username} <span className="text-slate-400 ml-1">(Pwd: {u.password})</span>
-                                        </td>
-                                        <td className="px-4 py-2 capitalize">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                                                {u.role}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-2 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => handleEditUser(u)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 dark:bg-indigo-900/30 rounded"><Edit size={16}/></button>
-                                                {u.id !== currentUser.id && (
-                                                    <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:text-red-800 p-1 bg-red-50 dark:bg-red-900/30 rounded"><Trash2 size={16}/></button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {users.map(u => {
+                                    const linkedName = u.role === 'driver' && u.linkedDriverId 
+                                        ? driversList.find(d => d.id === u.linkedDriverId)?.name 
+                                        : u.role === 'partner' && u.linkedPartnerId 
+                                        ? partnersList.find(p => p.id === u.linkedPartnerId)?.name 
+                                        : null;
+
+                                    return (
+                                        <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-200 flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex-shrink-0">
+                                                    {u.image ? <img src={u.image} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-bold">{u.name.charAt(0)}</div>}
+                                                </div>
+                                                <div>
+                                                    {u.name}
+                                                    {linkedName && (
+                                                        <span className="block text-[10px] text-slate-500 flex items-center gap-1">
+                                                            <LinkIcon size={8}/> Linked: {linkedName}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-xs text-indigo-600 dark:text-indigo-400">
+                                                {u.username} <span className="text-slate-400 ml-1">(Pwd: {u.password})</span>
+                                            </td>
+                                            <td className="px-4 py-2 capitalize">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                                                    {u.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-2 text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button onClick={() => handleEditUser(u)} className="text-indigo-600 hover:text-indigo-800 p-1 bg-indigo-50 dark:bg-indigo-900/30 rounded"><Edit size={16}/></button>
+                                                    {u.id !== currentUser.id && (
+                                                        <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:text-red-800 p-1 bg-red-50 dark:bg-red-900/30 rounded"><Trash2 size={16}/></button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                       </div>

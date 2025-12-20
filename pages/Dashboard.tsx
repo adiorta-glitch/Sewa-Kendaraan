@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Booking, BookingStatus, Car, PaymentStatus, AppSettings } from '../types';
+import { Booking, BookingStatus, Car, PaymentStatus, AppSettings, Transaction } from '../types';
 import { getStoredData, DEFAULT_SETTINGS } from '../services/dataService';
 import { getCurrentUser } from '../services/authService';
-import { AlertCircle, CheckCircle, TrendingUp, Car as CarIcon, Clock, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Map, Grid, User as UserIcon, Wallet, PieChart, UserCircle, Settings, Users, Percent, Filter } from 'lucide-react';
+import { AlertCircle, CheckCircle, TrendingUp, Car as CarIcon, Clock, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Map, Grid, User as UserIcon, Wallet, PieChart, UserCircle, Settings, Users, Percent, Filter, Navigation } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 
@@ -45,6 +45,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [user, setUser] = useState<any>(null);
@@ -59,12 +60,14 @@ const Dashboard = () => {
   useEffect(() => {
     const loadedBookings = getStoredData<Booking[]>('bookings', []);
     const loadedCars = getStoredData<Car[]>('cars', []);
+    const loadedTx = getStoredData<Transaction[]>('transactions', []);
     setBookings(loadedBookings);
     setCars(loadedCars);
+    setTransactions(loadedTx);
     setSettings(getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS));
     setUser(getCurrentUser());
 
-    // Prepare chart data (Revenue last 7 days)
+    // Prepare chart data (Revenue last 7 days) - Only for Admin
     const last7Days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
@@ -83,17 +86,43 @@ const Dashboard = () => {
     setChartData(data);
   }, []);
 
-  // Stats Calculation
-  const activeUnits = bookings.filter(b => b.status === BookingStatus.ACTIVE).length;
-  const upcomingReturns = bookings.filter(b => {
-      if(b.status !== BookingStatus.ACTIVE) return false;
-      const end = new Date(b.endDate);
-      const now = new Date();
-      // Returns within next 24h
-      const diff = end.getTime() - now.getTime();
-      return diff > 0 && diff < 86400000; 
-  }).length;
+  const isDriver = user?.role === 'driver';
   
+  // Filter Bookings for Display
+  const myBookings = isDriver 
+    ? bookings.filter(b => b.driverId === user?.linkedDriverId && b.status !== BookingStatus.CANCELLED) 
+    : bookings;
+
+  // Stats Calculation
+  const activeUnits = isDriver 
+    ? myBookings.filter(b => b.status === BookingStatus.ACTIVE).length 
+    : bookings.filter(b => b.status === BookingStatus.ACTIVE).length;
+
+  const upcomingReturns = isDriver 
+    ? myBookings.filter(b => {
+        if(b.status !== BookingStatus.ACTIVE) return false;
+        const end = new Date(b.endDate);
+        const now = new Date();
+        const diff = end.getTime() - now.getTime();
+        return diff > 0 && diff < 86400000;
+    }).length
+    : bookings.filter(b => {
+        if(b.status !== BookingStatus.ACTIVE) return false;
+        const end = new Date(b.endDate);
+        const now = new Date();
+        const diff = end.getTime() - now.getTime();
+        return diff > 0 && diff < 86400000; 
+    }).length;
+  
+  // For Driver: Use this for "Total Tasks This Month" instead of revenue
+  const driverMonthTasks = isDriver 
+    ? myBookings.filter(b => {
+        const bDate = new Date(b.startDate);
+        const now = new Date();
+        return bDate.getMonth() === now.getMonth() && bDate.getFullYear() === now.getFullYear();
+    }).length
+    : 0;
+
   const todayRevenue = bookings
     .filter(b => {
         const today = new Date().toISOString().split('T')[0];
@@ -134,7 +163,7 @@ const Dashboard = () => {
   // Filter Bookings for Calendar
   const getCalendarBookings = (date: Date) => {
       const dateStr = date.toISOString().split('T')[0];
-      return bookings.filter(b => {
+      return myBookings.filter(b => {
           const start = b.startDate.split('T')[0];
           const end = b.endDate.split('T')[0];
           
@@ -160,23 +189,34 @@ const Dashboard = () => {
       <div className="md:hidden">
           <h3 className="font-bold text-slate-800 mb-3">Menu Cepat</h3>
           <div className="grid grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <MenuItem to="/booking" icon={CalendarIcon} label="Booking" />
-              <MenuItem to="/tracking" icon={Map} label="Tracking" />
-              <MenuItem to="/fleet" icon={CarIcon} label="Armada" />
-              <MenuItem to="/customers" icon={UserIcon} label="Pelanggan" />
-              
-              <MenuItem to="/expenses" icon={Wallet} label="Keuangan" />
-              <MenuItem to="/statistics" icon={PieChart} label="Statistik" />
-              <MenuItem to="/settings" icon={Settings} label="Setting" />
-              <MenuItem icon={Grid} label="Lainnya" onClick={() => setIsMoreMenuOpen(true)} />
+              {isDriver ? (
+                  <>
+                    <MenuItem to="/tracking" icon={Navigation} label="Tugas" />
+                    <MenuItem to="/expenses" icon={Wallet} label="Klaim" />
+                    <MenuItem to="/drivers" icon={UserCircle} label="Profil" />
+                    <MenuItem to="/settings" icon={Settings} label="Akun" />
+                  </>
+              ) : (
+                  <>
+                    <MenuItem to="/booking" icon={CalendarIcon} label="Booking" />
+                    <MenuItem to="/tracking" icon={Map} label="Tracking" />
+                    <MenuItem to="/fleet" icon={CarIcon} label="Armada" />
+                    <MenuItem to="/customers" icon={UserIcon} label="Pelanggan" />
+                    
+                    <MenuItem to="/expenses" icon={Wallet} label="Keuangan" />
+                    <MenuItem to="/statistics" icon={PieChart} label="Statistik" />
+                    <MenuItem to="/settings" icon={Settings} label="Setting" />
+                    <MenuItem icon={Grid} label="Lainnya" onClick={() => setIsMoreMenuOpen(true)} />
+                  </>
+              )}
           </div>
       </div>
 
-      {/* Calendar Section (Moved Here for Mobile Order & Desktop Top Position) */}
+      {/* Calendar Section */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
               <div className="flex items-center gap-4">
-                  <h3 className="font-bold text-slate-800">Kalender Booking</h3>
+                  <h3 className="font-bold text-slate-800">Kalender {isDriver ? 'Tugas Saya' : 'Booking'}</h3>
                   <div className="flex items-center bg-slate-100 rounded-lg p-1">
                       <button onClick={prevMonth} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronLeft size={18}/></button>
                       <span className="px-3 text-sm font-bold text-slate-700 w-32 text-center">
@@ -187,20 +227,22 @@ const Dashboard = () => {
                   <button onClick={goToToday} className="text-xs text-indigo-600 font-bold hover:underline">Hari Ini</button>
               </div>
 
-              {/* Car Filter Dropdown */}
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                  <Filter size={16} className="text-slate-400" />
-                  <select 
-                      className="border rounded px-2 py-1.5 text-sm text-slate-600 bg-white w-full md:w-48"
-                      value={selectedCarFilter}
-                      onChange={e => setSelectedCarFilter(e.target.value)}
-                  >
-                      <option value="All">Semua Mobil</option>
-                      {cars.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} - {c.plate}</option>
-                      ))}
-                  </select>
-              </div>
+              {/* Car Filter Dropdown (Hidden for Driver usually, but useful if they drive multiple cars?) - Keeping simple for driver */}
+              {!isDriver && (
+                  <div className="flex items-center gap-2 w-full md:w-auto">
+                      <Filter size={16} className="text-slate-400" />
+                      <select 
+                          className="border rounded px-2 py-1.5 text-sm text-slate-600 bg-white w-full md:w-48"
+                          value={selectedCarFilter}
+                          onChange={e => setSelectedCarFilter(e.target.value)}
+                      >
+                          <option value="All">Semua Mobil</option>
+                          {cars.map(c => (
+                              <option key={c.id} value={c.id}>{c.name} - {c.plate}</option>
+                          ))}
+                      </select>
+                  </div>
+              )}
           </div>
 
           <div className="grid grid-cols-7 gap-px bg-slate-200 rounded-lg overflow-hidden border border-slate-200">
@@ -229,7 +271,7 @@ const Dashboard = () => {
                                                   b.status === 'Active' ? 'bg-green-50 border-green-400 text-green-700' :
                                                   'bg-slate-100 border-slate-400 text-slate-600'
                                               }`}>
-                                                  {car?.name}
+                                                  {isDriver ? `${b.destination}` : car?.name}
                                               </div>
                                           );
                                       })}
@@ -246,7 +288,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
-                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Unit Sedang Jalan</p>
+                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{isDriver ? 'Tugas Sedang Jalan' : 'Unit Sedang Jalan'}</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">{activeUnits}</h3>
             </div>
             <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
@@ -255,7 +297,7 @@ const Dashboard = () => {
         </div>
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
-                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Kembali Hari Ini</p>
+                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{isDriver ? 'Kembali Hari Ini' : 'Kembali Hari Ini'}</p>
                 <h3 className="text-2xl font-bold text-slate-800 mt-1">{upcomingReturns}</h3>
             </div>
             <div className="p-3 bg-orange-50 text-orange-600 rounded-lg">
@@ -264,8 +306,8 @@ const Dashboard = () => {
         </div>
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
-                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Omset Hari Ini</p>
-                <h3 className="text-2xl font-bold text-slate-800 mt-1">Rp {(todayRevenue/1000).toFixed(0)}k</h3>
+                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{isDriver ? 'Tugas Bulan Ini' : 'Omset Hari Ini'}</p>
+                <h3 className="text-2xl font-bold text-slate-800 mt-1">{isDriver ? driverMonthTasks : `Rp ${(todayRevenue/1000).toFixed(0)}k`}</h3>
             </div>
             <div className="p-3 bg-green-50 text-green-600 rounded-lg">
                 <TrendingUp size={24} />
@@ -273,76 +315,66 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* More Menu Modal (Mobile) */}
-      {isMoreMenuOpen && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-end md:hidden" onClick={() => setIsMoreMenuOpen(false)}>
-              <div className="bg-white w-full rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-200" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-bold text-lg">Menu Lengkap</h3>
-                      <button onClick={() => setIsMoreMenuOpen(false)} className="p-1 bg-slate-100 rounded-full"><Users size={20}/></button>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                      <MenuItem to="/drivers" icon={UserCircle} label="Driver" onClick={() => setIsMoreMenuOpen(false)} />
-                      <MenuItem to="/partners" icon={Users} label="Mitra" onClick={() => setIsMoreMenuOpen(false)} />
-                      <MenuItem to="/high-season" icon={Percent} label="Promo" onClick={() => setIsMoreMenuOpen(false)} />
-                  </div>
-              </div>
+      {/* Chart Section - HIDE FOR DRIVER */}
+      {!isDriver && (
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm min-w-0">
+            <h3 className="font-bold text-slate-800 mb-4">Grafik Pendapatan (7 Hari)</h3>
+            <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                        <defs>
+                            <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#DC2626" stopOpacity={0.1}/>
+                                <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => `${val/1000}k`} />
+                        <Tooltip contentStyle={{borderRadius: '8px'}} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} />
+                        <Area type="monotone" dataKey="total" stroke="#DC2626" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
           </div>
       )}
-
-      {/* Chart Section */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm min-w-0">
-        <h3 className="font-bold text-slate-800 mb-4">Grafik Pendapatan (7 Hari)</h3>
-        {/* Fix: Explicit inline style dimensions for Recharts container to avoid width(-1) error */}
-        <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                    <defs>
-                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#DC2626" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} tickFormatter={(val) => `${val/1000}k`} />
-                    <Tooltip contentStyle={{borderRadius: '8px'}} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} />
-                    <Area type="monotone" dataKey="total" stroke="#DC2626" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
-                </AreaChart>
-            </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* Recent Bookings List */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800">Booking Terbaru</h3>
-              <Link to="/booking" className="text-xs text-indigo-600 font-bold hover:underline">Lihat Semua</Link>
+              <h3 className="font-bold text-slate-800">{isDriver ? 'Tugas Terbaru' : 'Booking Terbaru'}</h3>
+              <Link to={isDriver ? "/tracking" : "/booking"} className="text-xs text-indigo-600 font-bold hover:underline">Lihat Semua</Link>
           </div>
           <div className="divide-y divide-slate-100">
-              {bookings.slice(0, 5).map(booking => (
-                  <div key={booking.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                      <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${booking.status === 'Active' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
-                              <CarIcon size={18} />
+              {myBookings.slice(0, 5).map(booking => {
+                  const car = cars.find(c => c.id === booking.carId);
+                  return (
+                      <div key={booking.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${booking.status === 'Active' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
+                                  <CarIcon size={18} />
+                              </div>
+                              <div>
+                                  <p className="font-bold text-sm text-slate-800">{isDriver ? booking.destination : booking.customerName}</p>
+                                  <p className="text-xs text-slate-500">{new Date(booking.startDate).toLocaleDateString('id-ID')} • {isDriver ? car?.name : booking.destination}</p>
+                              </div>
                           </div>
-                          <div>
-                              <p className="font-bold text-sm text-slate-800">{booking.customerName}</p>
-                              <p className="text-xs text-slate-500">{new Date(booking.startDate).toLocaleDateString('id-ID')} • {booking.destination}</p>
+                          <div className="text-right">
+                              <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${
+                                  booking.status === 'Active' ? 'bg-green-100 text-green-700' : 
+                                  booking.status === 'Completed' ? 'bg-blue-100 text-blue-700' : 
+                                  booking.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                                  'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                  {booking.status}
+                              </span>
                           </div>
                       </div>
-                      <div className="text-right">
-                          <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${
-                              booking.status === 'Active' ? 'bg-green-100 text-green-700' : 
-                              booking.status === 'Completed' ? 'bg-blue-100 text-blue-700' : 
-                              booking.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
-                              'bg-yellow-100 text-yellow-700'
-                          }`}>
-                              {booking.status}
-                          </span>
-                      </div>
-                  </div>
-              ))}
+                  );
+              })}
+              {myBookings.length === 0 && (
+                  <div className="p-8 text-center text-slate-500 text-sm">Belum ada data tugas.</div>
+              )}
           </div>
       </div>
     </div>

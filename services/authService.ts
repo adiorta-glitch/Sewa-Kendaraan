@@ -22,6 +22,17 @@ const INITIAL_USERS: User[] = [
     phone: '081211111111',
     role: 'admin',
     image: 'https://i.pravatar.cc/150?u=admin'
+  },
+  {
+    id: 'u3',
+    username: 'driver',
+    password: '123',
+    name: 'Budi Santoso',
+    email: 'budi@brc.com',
+    phone: '081234567890',
+    role: 'driver',
+    linkedDriverId: 'd1', // Link to dummy driver Budi
+    image: 'https://i.pravatar.cc/150?u=d1'
   }
 ];
 
@@ -38,9 +49,11 @@ const initAuth = () => {
         const users = JSON.parse(storedUsers) as User[];
         const superUser = users.find(u => u.username === 'super');
         
-        if (!superUser || superUser.role !== 'superadmin') {
-            // Merge initial users with stored users to ensure superadmin exists and is correct
-            // We keep created users, but ensure default users are up to date
+        // Also ensure dummy driver exists for testing
+        const driverUser = users.find(u => u.username === 'driver');
+        
+        if (!superUser || superUser.role !== 'superadmin' || !driverUser) {
+            // Merge initial users with stored users to ensure superadmin/driver exists
             const mergedUsers = [...INITIAL_USERS];
             users.forEach(u => {
                 if (!mergedUsers.find(mu => mu.username === u.username)) {
