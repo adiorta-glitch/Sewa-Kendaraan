@@ -293,8 +293,8 @@ const Dashboard = () => {
       {/* Chart Section */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm min-w-0">
         <h3 className="font-bold text-slate-800 mb-4">Grafik Pendapatan (7 Hari)</h3>
-        {/* Fix: Explicit height and width for Recharts container */}
-        <div className="h-64 w-full relative min-w-0">
+        {/* Fix: Explicit inline style dimensions for Recharts container to avoid width(-1) error */}
+        <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                     <defs>

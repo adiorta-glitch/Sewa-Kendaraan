@@ -6,6 +6,7 @@ import { Lock, User } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { getStoredData, DEFAULT_SETTINGS } from '../services/dataService';
 import { AppSettings } from '../types';
+import { ThemeEngine } from '../components/ThemeEngine';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -40,6 +41,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <ThemeEngine settings={settings} />
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative">
         {/* Header - Black Background for BRC */}
         <div className="bg-slate-900 p-8 text-center relative overflow-hidden">

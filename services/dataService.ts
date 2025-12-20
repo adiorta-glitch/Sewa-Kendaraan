@@ -178,11 +178,12 @@ export const setStoredData = async (key: string, data: any) => {
         localStorage.setItem(key, JSON.stringify(data));
         
         // 2. Sinkron ke Firebase
-        // We trigger this without awaiting if we want UI to be fast, but waiting ensures sync confirmation
+        // We trigger this WITHOUT awaiting to prevent UI blocking if network is slow/offline
+        // The data is already safe in LocalStorage
         if (key === KEYS.SETTINGS) {
-            await syncSettingsToCloud(data);
+            syncSettingsToCloud(data).catch(e => console.warn("[Firebase] Background sync failed:", e));
         } else {
-            await syncToFirestore(key, data);
+            syncToFirestore(key, data).catch(e => console.warn("[Firebase] Background sync failed:", e));
         }
     } catch (e) {
         console.error(`Error saving ${key} to localStorage`, e);
@@ -375,6 +376,7 @@ export const generateDummyData = async () => {
     const data = generateDummyDataObjects();
     
     // Write all to storage and wait for completion
+    // Since setStoredData is now non-blocking for Firebase, this returns quickly after LocalStorage update
     await Promise.all([
         setStoredData(KEYS.PARTNERS, data.partners),
         setStoredData(KEYS.DRIVERS, data.drivers),

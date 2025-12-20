@@ -273,7 +273,7 @@ const StatisticsPage = () => {
               <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4">Grafik Pendapatan Harian</h4>
                   {/* Fixed container size for Recharts */}
-                  <div className="h-80 w-full relative min-w-0">
+                  <div style={{ width: '100%', height: 320 }}>
                       <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={getDailyHistogram()}>
                               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -290,7 +290,7 @@ const StatisticsPage = () => {
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4">Status Pembayaran</h4>
                   {/* Fixed container size for Recharts */}
-                  <div className="h-80 w-full relative min-w-0">
+                  <div style={{ width: '100%', height: 320 }}>
                       <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                               <Pie
@@ -321,7 +321,7 @@ const StatisticsPage = () => {
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
               <h4 className="font-bold text-slate-700 mb-4">Top 5 Pelanggan Teraktif</h4>
-              <div className="h-72 w-full relative min-w-0">
+              <div style={{ width: '100%', height: 300 }}>
                   <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={getTopCustomers()} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
@@ -344,7 +344,7 @@ const StatisticsPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Package size={18}/> Top Unit Terlaris</h4>
-                  <div className="h-72 w-full relative min-w-0">
+                  <div style={{ width: '100%', height: 300 }}>
                       <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                               <Pie
@@ -365,7 +365,7 @@ const StatisticsPage = () => {
               </div>
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
                   <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><ShieldCheck size={18}/> Transaksi Perusahaan vs Mitra</h4>
-                  <div className="h-72 w-full relative min-w-0">
+                  <div style={{ width: '100%', height: 300 }}>
                       <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                               <Pie
@@ -387,7 +387,7 @@ const StatisticsPage = () => {
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-w-0">
               <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserIcon size={18}/> Performa Driver (Jumlah Trip)</h4>
-              <div className="h-72 w-full relative min-w-0">
+              <div style={{ width: '100%', height: 300 }}>
                   <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={getDriverStats()}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} />

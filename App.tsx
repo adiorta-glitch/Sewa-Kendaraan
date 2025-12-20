@@ -6,6 +6,7 @@ import { initializeData, getStoredData, DEFAULT_SETTINGS } from './services/data
 import { getCurrentUser, logout } from './services/authService';
 import { User, AppSettings } from './types';
 import { Logo, LogoText } from './components/Logo';
+import { ThemeEngine } from './components/ThemeEngine';
 import Dashboard from './pages/Dashboard';
 import BookingPage from './pages/BookingPage';
 import FleetPage from './pages/FleetPage';
@@ -18,67 +19,6 @@ import CustomersPage from './pages/CustomersPage';
 import DriverTrackingPage from './pages/DriverTrackingPage';
 import ExpensesPage from './pages/ExpensesPage';
 import StatisticsPage from './pages/StatisticsPage';
-
-// --- THEME ENGINE ---
-const THEME_COLORS: {[key: string]: {main: string, hover: string, light: string, text: string}} = {
-    red: { main: '#DC2626', hover: '#B91C1C', light: '#FEF2F2', text: '#DC2626' },
-    blue: { main: '#2563EB', hover: '#1D4ED8', light: '#EFF6FF', text: '#2563EB' },
-    green: { main: '#16A34A', hover: '#15803D', light: '#F0FDF4', text: '#16A34A' },
-    purple: { main: '#7C3AED', hover: '#6D28D9', light: '#F5F3FF', text: '#7C3AED' },
-    orange: { main: '#EA580C', hover: '#C2410C', light: '#FFF7ED', text: '#EA580C' },
-    black: { main: '#1F2937', hover: '#111827', light: '#F3F4F6', text: '#1F2937' },
-};
-
-const ThemeEngine = ({ settings }: { settings: AppSettings }) => {
-    useEffect(() => {
-        // 1. Handle Dark Mode
-        if (settings.darkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-
-        // 2. Handle Color Theme Injection
-        // We override the standard 'red' and 'indigo' classes used in the app to match the selected theme
-        const color = THEME_COLORS[settings.themeColor || 'red'] || THEME_COLORS['red'];
-        
-        const styleId = 'brc-theme-styles';
-        let styleTag = document.getElementById(styleId);
-        if (!styleTag) {
-            styleTag = document.createElement('style');
-            styleTag.id = styleId;
-            document.head.appendChild(styleTag);
-        }
-
-        styleTag.innerHTML = `
-            /* OVERRIDE RED BUTTONS/TEXT */
-            .bg-red-600, .bg-indigo-600 { background-color: ${color.main} !important; }
-            .hover\\:bg-red-700:hover, .hover\\:bg-indigo-700:hover { background-color: ${color.hover} !important; }
-            .text-red-600, .text-indigo-600, .text-indigo-700 { color: ${color.text} !important; }
-            .bg-red-50, .bg-indigo-50 { background-color: ${color.light} !important; }
-            .border-red-600, .focus\\:border-red-600:focus, .focus\\:ring-red-600:focus { border-color: ${color.main} !important; --tw-ring-color: ${color.main} !important; }
-            .border-indigo-600 { border-color: ${color.main} !important; }
-            
-            /* Specific fix for Sidebar Active State */
-            .bg-red-600.text-white { background-color: ${color.main} !important; }
-            
-            /* Dark Mode Overrides for Layout */
-            .dark body { background-color: #0F172A !important; color: #F8FAFC !important; }
-            .dark .bg-white { background-color: #1E293B !important; color: #F8FAFC !important; border-color: #334155 !important; }
-            .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #334155 !important; border-color: #475569 !important; color: #F1F5F9 !important; }
-            .dark .text-slate-800, .dark .text-slate-900 { color: #F8FAFC !important; }
-            .dark .text-slate-500, .dark .text-slate-600, .dark .text-slate-700 { color: #94A3B8 !important; }
-            .dark .border-slate-200, .dark .border-slate-100 { border-color: #334155 !important; }
-            .dark input, .dark select, .dark textarea { background-color: #0F172A !important; border-color: #475569 !important; color: white !important; }
-            
-            /* Mobile Safe Area Fixes */
-            .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-            .pt-safe { padding-top: env(safe-area-inset-top); }
-        `;
-    }, [settings.themeColor, settings.darkMode]);
-
-    return null;
-};
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
@@ -167,7 +107,7 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
+    <div className="min-h-screen bg-white dark:bg-slate-900 transition-colors duration-200">
       <ThemeEngine settings={settings} />
       
       {/* --- DESKTOP SIDEBAR --- */}
