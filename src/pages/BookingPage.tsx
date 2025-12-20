@@ -9,9 +9,9 @@ import {
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getStoredData, setStoredData, checkAvailability, DEFAULT_SETTINGS, compressImage } from '../services/dataService';
-import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist } from '../types';
-import { generateInvoicePDF, generateWhatsAppLink, generateDriverTaskLink } from '../services/pdfService';
+import { getStoredData, setStoredData, checkAvailability, DEFAULT_SETTINGS, compressImage } from '../../services/dataService';
+import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist } from '../../types';
+import { generateInvoicePDF, generateWhatsAppLink, generateDriverTaskLink } from '../../services/pdfService';
 
 interface Props {
     currentUser: User;
@@ -545,7 +545,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase">Paket Sewa</label>
                                 <select className="w-full border rounded-xl p-2.5 text-sm font-bold" value={packageType} onChange={e => setPackageType(e.target.value)}>
-                                    {settings.rentalPackages.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {settings.rentalPackages.map((p: string) => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div className="space-y-1">
