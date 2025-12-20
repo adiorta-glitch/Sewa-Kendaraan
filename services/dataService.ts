@@ -60,7 +60,22 @@ E. Mengubah bentuk atau memodifikasi komponen mobil.
 
 6. Force Majeure
 Pihak Rental tidak bertanggung jawab atas kerugian Penyewa yang disebabkan oleh kejadian di luar kendali (bencana alam, huru-hara, atau kerusakan mesin murni karena faktor usia kendaraan yang bukan akibat kelalaian penggunaan).`,
-  whatsappTemplate: 'Halo *{name}*,\nBerikut invoice sewa mobil anda:\nUnit: {unit}\nTotal: {total}\n\nTerima kasih.',
+  whatsappTemplate: `Halo *{name}*,
+
+Terima kasih telah melakukan pemesanan di *{company}*.
+Berikut rincian invoice sewa mobil Anda:
+
+📄 No. Invoice: *{invoiceNo}*
+🚗 Unit: {unit}
+📅 Mulai: {startDate}
+📅 Selesai: {endDate}
+
+💰 Total Tagihan: Rp {total}
+✅ Sudah Bayar: Rp {paid}
+⚠️ Sisa Tagihan: *Rp {remaining}*
+Status: *{status}*
+
+{footer}`,
   carCategories: ['MPV', 'SUV', 'Sedan', 'City Car', 'Luxury', 'Minibus'],
   rentalPackages: ['12 Jam (Dalam Kota)', '24 Jam (Dalam Kota)', '24 Jam (Luar Kota)'],
   gpsProvider: 'Simulation'

@@ -5,12 +5,12 @@ import {
   Image as ImageIcon, X, FileText, ClipboardCheck, Fuel, 
   Gauge, Car as CarIcon, Edit2, FileSpreadsheet, ChevronDown, 
   Filter, Info, Send, Wallet, CheckSquare, Clock as ClockIcon,
-  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle, Camera
+  DollarSign, CreditCard, Tag, ArrowRight, History, XCircle, BarChart2, List as ListIcon
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getStoredData, setStoredData, checkAvailability, DEFAULT_SETTINGS, compressImage } from '../services/dataService';
-import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist, Partner } from '../types';
+import { Car, Booking, BookingStatus, PaymentStatus, Transaction, Driver, HighSeason, AppSettings, Customer, User, VehicleChecklist } from '../types';
 import { generateInvoicePDF, generateWhatsAppLink, generateDriverTaskLink } from '../services/pdfService';
 
 interface Props {
@@ -20,13 +20,13 @@ interface Props {
 const BookingPage: React.FC<Props> = ({ currentUser }) => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   
   const [cars, setCars] = useState<Car[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
   const [highSeasons, setHighSeasons] = useState<HighSeason[]>([]);
 
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -109,7 +109,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
     setDrivers(getStoredData<Driver[]>('drivers', []));
     setHighSeasons(getStoredData<HighSeason[]>('highSeasons', []));
     setCustomers(getStoredData<Customer[]>('customers', []));
-    setPartners(getStoredData<Partner[]>('partners', []));
     const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
     setSettings(loadedSettings);
     if(loadedSettings.rentalPackages.length > 0) {
@@ -159,8 +158,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
             const calculated = overdueHours * ((customBasePrice || 0) / 10);
             setOvertimeFee(calculated);
         } else {
-            // Only reset to 0 if calculated, allowing manual override if needed? 
-            // For now, strict calc is safer to prevent errors.
             setOvertimeFee(0);
         }
     }
@@ -214,37 +211,6 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         });
     }
   }, [selectedCarId, selectedDriverId, useDriver, startDate, startTime, endDate, endTime, customBasePrice, deliveryFee, extraCost, overtimeFee, bookings, cars, drivers, highSeasons, editingBookingId]);
-
-  const handleChecklistImageUpload = async (field: 'speedometer' | 'front' | 'back' | 'left' | 'right', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        try {
-            const res = await compressImage(file);
-            if (field === 'speedometer') setCheckSpeedometerImg(res);
-            if (field === 'front') setCheckFrontImg(res);
-            if (field === 'back') setCheckBackImg(res);
-            if (field === 'left') setCheckLeftImg(res);
-            if (field === 'right') setCheckRightImg(res);
-        } catch(e) {
-            alert("Gagal memproses gambar.");
-        }
-    }
-  };
-
-  const handleDepositImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          setIsUploadingDeposit(true);
-          try {
-              const res = await compressImage(file);
-              setDepositImage(res);
-          } catch(e) {
-              alert("Gagal memproses foto jaminan.");
-          } finally {
-              setIsUploadingDeposit(false);
-          }
-      }
-  };
 
   const handleEdit = (booking: Booking) => {
       setEditingBookingId(booking.id);
@@ -331,12 +297,10 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       packageType,
       destination,
       customerNote: customerNote,
-      // DEPOSIT FIELDS
       securityDepositType: depositType,
       securityDepositValue: depositValue ? parseInt(depositValue) : 0,
       securityDepositDescription: depositDescription,
       securityDepositImage: depositImage || undefined,
-      
       basePrice: pricing.basePrice,
       driverFee: pricing.driverFee,
       highSeasonFee: pricing.highSeasonFee,
@@ -354,13 +318,8 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
     };
 
     let oldPaid = editingBookingId ? (bookings.find(b => b.id === editingBookingId)?.amountPaid || 0) : 0;
-    
-    // --- AUTOMATION LOGIC ---
-    let transactionList = getStoredData<Transaction[]>('transactions', []);
-    
-    // 1. Income Transaction
     if (paid > oldPaid) {
-        const incomeTx: Transaction = {
+        const transaction: Transaction = {
             id: `tx-${Date.now()}`,
             date: new Date().toISOString(),
             amount: paid - oldPaid,
@@ -370,100 +329,15 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
             bookingId: newBooking.id,
             receiptImage: paymentProofImage || undefined
         };
-        transactionList = [incomeTx, ...transactionList];
+        const currentTx = getStoredData<Transaction[]>('transactions', []);
+        setStoredData('transactions', [transaction, ...currentTx]);
     }
-
-    // 2. Auto-Generate Expenses when PAID
-    if (finalPaymentStatus === PaymentStatus.PAID) {
-        const car = cars.find(c => c.id === selectedCarId);
-        
-        // A. Partner Deposit (Setor Mitra)
-        if (car && car.partnerId) {
-            // Check duplications
-            const exists = transactionList.some(t => t.bookingId === newBooking.id && t.category === 'Setor Mitra');
-            if (!exists) {
-                const partner = partners.find(p => p.id === car.partnerId);
-                if (partner) {
-                    // Split logic: (Base + HighSeason) * Split %
-                    const shareable = newBooking.basePrice + newBooking.highSeasonFee;
-                    const partnerAmount = shareable * (partner.splitPercentage / 100);
-                    
-                    const expenseTx: Transaction = {
-                        id: `exp-partner-${newBooking.id}-${Date.now()}`,
-                        date: new Date().toISOString(),
-                        amount: partnerAmount,
-                        type: 'Expense',
-                        category: 'Setor Mitra',
-                        description: `Setoran Mitra Booking #${newBooking.id.slice(0,6)} (${car.name})`,
-                        status: 'Pending', // Unpaid/Pending initially
-                        relatedId: partner.id,
-                        bookingId: newBooking.id
-                    };
-                    transactionList = [expenseTx, ...transactionList];
-                }
-            }
-        }
-
-        // B. Driver Salary (Gaji)
-        if (newBooking.driverId && newBooking.driverFee > 0) {
-            const exists = transactionList.some(t => t.bookingId === newBooking.id && t.category === 'Gaji');
-            if (!exists) {
-                const expenseTx: Transaction = {
-                    id: `exp-driver-${newBooking.id}-${Date.now()}`,
-                    date: new Date().toISOString(),
-                    amount: newBooking.driverFee,
-                    type: 'Expense',
-                    category: 'Gaji',
-                    description: `Gaji Driver Booking #${newBooking.id.slice(0,6)} (${newBooking.customerName})`,
-                    status: 'Pending', // Unpaid/Pending initially
-                    relatedId: newBooking.driverId,
-                    bookingId: newBooking.id
-                };
-                transactionList = [expenseTx, ...transactionList];
-            }
-        }
-    }
-
-    setStoredData('transactions', transactionList);
-    // --- END AUTOMATION ---
 
     const updated = editingBookingId ? bookings.map(b => b.id === editingBookingId ? newBooking : b) : [newBooking, ...bookings];
     setBookings(updated);
     setStoredData('bookings', updated);
     setSuccessMessage('Booking berhasil diamankan!');
     setTimeout(() => { setSuccessMessage(''); setActiveTab('list'); resetForm(); }, 2000);
-  };
-
-  const handleFormCancelBooking = () => {
-      if (!editingBookingId) return;
-      if (window.confirm('Ubah status menjadi CANCELLED dan lepaskan jadwal unit?')) {
-          const updated = bookings.map(b => {
-              if (b.id === editingBookingId) {
-                  return { 
-                      ...b, 
-                      status: BookingStatus.CANCELLED,
-                      driverId: undefined, 
-                      checklist: undefined 
-                  };
-              }
-              return b;
-          });
-          setBookings(updated);
-          setStoredData('bookings', updated);
-          setSuccessMessage('Status booking diubah menjadi CANCELLED!');
-          setTimeout(() => { setSuccessMessage(''); setActiveTab('list'); resetForm(); }, 1500);
-      }
-  };
-
-  const handleFormDelete = () => {
-      if (!editingBookingId) return;
-      if(window.confirm('Hapus data booking ini secara permanen? Data tidak bisa dikembalikan.')) {
-          const updated = bookings.filter(b => b.id !== editingBookingId);
-          setBookings(updated);
-          setStoredData('bookings', updated);
-          setSuccessMessage('Data booking berhasil dihapus.');
-          setTimeout(() => { setSuccessMessage(''); setActiveTab('list'); resetForm(); }, 1500);
-      }
   };
 
   const resetForm = () => {
@@ -503,6 +377,22 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
           setCheckFrontImg(null); setCheckBackImg(null); setCheckLeftImg(null); setCheckRightImg(null); setCheckNotes('');
       }
       setIsChecklistModalOpen(true);
+  };
+
+  const handleChecklistImageUpload = async (field: 'speedometer' | 'front' | 'back' | 'left' | 'right', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        try {
+            const res = await compressImage(file);
+            if (field === 'speedometer') setCheckSpeedometerImg(res);
+            if (field === 'front') setCheckFrontImg(res);
+            if (field === 'back') setCheckBackImg(res);
+            if (field === 'left') setCheckLeftImg(res);
+            if (field === 'right') setCheckRightImg(res);
+        } catch(e) {
+            alert("Gagal memproses gambar.");
+        }
+    }
   };
 
   const saveChecklist = (e: React.FormEvent) => {
@@ -550,6 +440,53 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       }
   };
 
+  const handleFormDelete = () => {
+      if (!editingBookingId) return;
+      if(window.confirm('Hapus data booking ini secara permanen? Data tidak bisa dikembalikan.')) {
+          const updated = bookings.filter(b => b.id !== editingBookingId);
+          setBookings(updated);
+          setStoredData('bookings', updated);
+          setSuccessMessage('Data booking berhasil dihapus.');
+          setTimeout(() => { setSuccessMessage(''); setActiveTab('list'); resetForm(); }, 1500);
+      }
+  };
+
+  const handleFormCancelBooking = () => {
+      if (!editingBookingId) return;
+      if (window.confirm('Ubah status menjadi CANCELLED dan lepaskan jadwal unit?')) {
+          const updated = bookings.map(b => {
+              if (b.id === editingBookingId) {
+                  return { 
+                      ...b, 
+                      status: BookingStatus.CANCELLED,
+                      driverId: undefined, 
+                      checklist: undefined 
+                  };
+              }
+              return b;
+          });
+          setBookings(updated);
+          setStoredData('bookings', updated);
+          setSuccessMessage('Status booking diubah menjadi CANCELLED!');
+          setTimeout(() => { setSuccessMessage(''); setActiveTab('list'); resetForm(); }, 1500);
+      }
+  };
+
+  const handleDepositImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          setIsUploadingDeposit(true);
+          try {
+              const res = await compressImage(file);
+              setDepositImage(res);
+          } catch(e) {
+              alert("Gagal memproses foto jaminan.");
+          } finally {
+              setIsUploadingDeposit(false);
+          }
+      }
+  };
+
   const selectedCarData = cars.find(c => c.id === selectedCarId);
 
   const statusPriority: Record<string, number> = {
@@ -558,6 +495,18 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
       [BookingStatus.COMPLETED]: 3,
       [BookingStatus.CANCELLED]: 4,
       [BookingStatus.MAINTENANCE]: 5
+  };
+
+  // TIMELINE LOGIC
+  const getTimelineDates = () => {
+      const dates = [];
+      const start = filterStartDate ? new Date(filterStartDate) : new Date();
+      for(let i=0; i<14; i++) {
+          const d = new Date(start);
+          d.setDate(d.getDate() + i);
+          dates.push(d);
+      }
+      return dates;
   };
 
   return (
@@ -577,6 +526,19 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         <div className="bg-green-600 text-white px-4 py-3 rounded-xl flex items-center gap-3 animate-bounce">
           <CheckCircle size={20} /> <span className="font-bold">{successMessage}</span>
         </div>
+      )}
+
+      {activeTab === 'list' && (
+          <div className="flex justify-end">
+             <div className="bg-slate-100 p-1 rounded-lg flex border border-slate-200">
+                <button onClick={() => setViewMode('list')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                    <ListIcon size={14}/> List
+                </button>
+                <button onClick={() => setViewMode('timeline')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-bold transition-all ${viewMode === 'timeline' ? 'bg-white shadow text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                    <BarChart2 size={14} className="rotate-90"/> Timeline (Anti-Bentrok)
+                </button>
+             </div>
+          </div>
       )}
 
       {activeTab === 'create' ? (
@@ -614,13 +576,17 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                              </div>
                              {isCarDropdownOpen && (
                                 <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-64 overflow-y-auto">
-                                    {cars.map(car => {
+                                    {cars.sort((a,b) => {
+                                        const availA = (!startDate || !endDate) ? true : checkAvailability(bookings, a.id, new Date(`${startDate}T${startTime}`), new Date(`${endDate}T${endTime}`), 'car', editingBookingId || undefined);
+                                        const availB = (!startDate || !endDate) ? true : checkAvailability(bookings, b.id, new Date(`${startDate}T${startTime}`), new Date(`${endDate}T${endTime}`), 'car', editingBookingId || undefined);
+                                        return (availA === availB) ? 0 : availA ? -1 : 1;
+                                    }).map(car => {
                                         const isAvailable = (!startDate || !endDate) ? true : checkAvailability(bookings, car.id, new Date(`${startDate}T${startTime}`), new Date(`${endDate}T${endTime}`), 'car', editingBookingId || undefined);
                                         return (
-                                            <div key={car.id} onClick={() => isAvailable && (setSelectedCarId(car.id), setIsCarDropdownOpen(false))} className={`p-3 border-b last:border-0 flex items-center gap-4 transition-colors ${!isAvailable ? 'bg-slate-100 opacity-40 cursor-not-allowed' : 'hover:bg-indigo-50 cursor-pointer'}`}>
+                                            <div key={car.id} onClick={() => isAvailable && (setSelectedCarId(car.id), setIsCarDropdownOpen(false))} className={`p-3 border-b last:border-0 flex items-center gap-4 transition-colors ${!isAvailable ? 'bg-slate-100 opacity-60 cursor-not-allowed grayscale' : 'hover:bg-indigo-50 cursor-pointer'}`}>
                                                 <img src={car.image} className="w-12 h-8 object-cover rounded shadow-sm" />
                                                 <div className="flex-1"><p className="font-bold text-xs text-slate-800">{car.name}</p><p className="text-[9px] text-slate-500">{car.plate}</p></div>
-                                                {!isAvailable && <span className="text-[8px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-black uppercase">Bentrok</span>}
+                                                {!isAvailable ? <span className="text-[8px] bg-red-100 text-red-600 px-2 py-1 rounded-full font-black uppercase tracking-wide">BENTROK</span> : <span className="text-[8px] bg-green-100 text-green-600 px-2 py-1 rounded-full font-bold uppercase">AVAILABLE</span>}
                                             </div>
                                         );
                                     })}
@@ -683,7 +649,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                                          </>
                                      ) : (
                                          <div className="text-center text-slate-400 pointer-events-none">
-                                             <Camera size={24} className="mx-auto mb-1"/>
+                                             <ImageIcon size={24} className="mx-auto mb-1"/>
                                              <span className="text-[10px]">Upload Foto</span>
                                          </div>
                                      )}
@@ -694,6 +660,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                     </section>
                 </div>
                 <div className="p-8 space-y-8 overflow-y-auto">
+                    {/* ... (Existing sections for Customer, Summary, Payment, Return) ... */}
                     <section className="space-y-5">
                         <h4 className="font-black text-slate-800 flex items-center gap-2 border-b pb-3 uppercase tracking-widest text-xs"><UserIcon size={18} className="text-indigo-600"/> 1. Data Pelanggan</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -835,6 +802,7 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
         </div>
       ) : (
         <div className="space-y-4">
+            {/* Filter Section */}
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-wrap gap-4 items-center shadow-sm">
                 <span className="text-sm font-black text-slate-700 flex items-center gap-2 uppercase tracking-tighter"><Filter size={18} className="text-indigo-600"/> Filter Data:</span>
                 <input type="date" className="border rounded-xl px-4 py-2 text-sm font-bold text-slate-600 bg-slate-50 focus:ring-2 ring-indigo-100 outline-none" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
@@ -848,121 +816,192 @@ const BookingPage: React.FC<Props> = ({ currentUser }) => {
                     <option value="Cancelled">CANCELLED</option>
                 </select>
             </div>
-            <div className="grid grid-cols-1 gap-4">
-                {bookings.filter(b => {
-                    const bDate = b.startDate.split('T')[0];
-                    const start = filterStartDate || '0000-00-00';
-                    const end = filterEndDate || '9999-12-31';
-                    const matchesDate = bDate >= start && bDate <= end;
-                    const matchesStatus = filterStatus === 'All' || b.status === filterStatus;
-                    return matchesDate && matchesStatus;
-                }).sort((a, b) => {
-                    const priorityA = statusPriority[a.status] || 99;
-                    const priorityB = statusPriority[b.status] || 99;
-                    if (priorityA !== priorityB) return priorityA - priorityB;
-                    return b.createdAt - a.createdAt;
-                }).map(b => {
-                    const car = cars.find(c => c.id === b.carId);
-                    const isDue = b.totalPrice > b.amountPaid;
-                    const diffDays = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
-                    const getStatusColorClass = (status: BookingStatus) => {
-                        switch(status) {
-                            case BookingStatus.BOOKED: return 'bg-orange-500 text-white';
-                            case BookingStatus.ACTIVE: return 'bg-green-600 text-white';
-                            case BookingStatus.COMPLETED: return 'bg-blue-600 text-white';
-                            case BookingStatus.CANCELLED: return 'bg-slate-400 text-white';
-                            default: return 'bg-slate-200 text-slate-500';
-                        }
-                    };
+            {viewMode === 'list' ? (
+                /* LIST VIEW */
+                <div className="grid grid-cols-1 gap-4">
+                    {bookings.filter(b => {
+                        const bDate = b.startDate.split('T')[0];
+                        const start = filterStartDate || '0000-00-00';
+                        const end = filterEndDate || '9999-12-31';
+                        const matchesDate = bDate >= start && bDate <= end;
+                        const matchesStatus = filterStatus === 'All' || b.status === filterStatus;
+                        return matchesDate && matchesStatus;
+                    }).sort((a, b) => {
+                        const priorityA = statusPriority[a.status] || 99;
+                        const priorityB = statusPriority[b.status] || 99;
+                        if (priorityA !== priorityB) return priorityA - priorityB;
+                        return b.createdAt - a.createdAt;
+                    }).map(b => {
+                        const car = cars.find(c => c.id === b.carId);
+                        const isDue = b.totalPrice > b.amountPaid;
+                        const diffDays = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
-                    const getLeftStripeColor = (status: BookingStatus) => {
-                        switch(status) {
-                            case BookingStatus.BOOKED: return 'bg-orange-500';
-                            case BookingStatus.ACTIVE: return 'bg-green-500';
-                            case BookingStatus.COMPLETED: return 'bg-blue-500';
-                            case BookingStatus.CANCELLED: return 'bg-slate-400';
-                            default: return 'bg-slate-300';
-                        }
-                    };
+                        const getStatusColorClass = (status: BookingStatus) => {
+                            switch(status) {
+                                case BookingStatus.BOOKED: return 'bg-orange-500 text-white';
+                                case BookingStatus.ACTIVE: return 'bg-green-600 text-white';
+                                case BookingStatus.COMPLETED: return 'bg-blue-600 text-white';
+                                case BookingStatus.CANCELLED: return 'bg-slate-400 text-white';
+                                default: return 'bg-slate-200 text-slate-500';
+                            }
+                        };
 
-                    return (
-                        <div key={b.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-6 relative overflow-hidden">
-                            <div className={`absolute left-0 top-0 bottom-0 w-2 ${getLeftStripeColor(b.status)}`}></div>
-                            <div className="flex flex-col md:flex-row justify-between items-center gap-6 w-full">
-                                <div className="flex items-center gap-5 w-full">
-                                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                                        <CarIcon size={32} className="text-slate-400"/>
-                                    </div>
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex items-center gap-3">
-                                            <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight">{car?.name} <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black border border-slate-200 ml-2">{car?.plate}</span></h4>
+                        const getLeftStripeColor = (status: BookingStatus) => {
+                            switch(status) {
+                                case BookingStatus.BOOKED: return 'bg-orange-500';
+                                case BookingStatus.ACTIVE: return 'bg-green-500';
+                                case BookingStatus.COMPLETED: return 'bg-blue-500';
+                                case BookingStatus.CANCELLED: return 'bg-slate-400';
+                                default: return 'bg-slate-300';
+                            }
+                        };
+
+                        return (
+                            <div key={b.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-6 relative overflow-hidden">
+                                <div className={`absolute left-0 top-0 bottom-0 w-2 ${getLeftStripeColor(b.status)}`}></div>
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-6 w-full">
+                                    <div className="flex items-center gap-5 w-full">
+                                        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                                            <CarIcon size={32} className="text-slate-400"/>
                                         </div>
-                                        <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-500">
-                                            <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-600"/> {new Date(b.startDate).toLocaleDateString('id-ID')}</span>
-                                            <span className="flex items-center gap-1.5 text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md"><ClockIcon size={14}/> {diffDays} HARI</span>
-                                            <span className="flex items-center gap-1.5 text-red-600 uppercase"><UserIcon size={14}/> {b.customerName}</span>
-                                            <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                                                <Wallet size={14}/> Rp {b.totalPrice.toLocaleString()} {isDue && b.status !== BookingStatus.CANCELLED && <span className="text-[10px] opacity-70">(Sisa: {(b.totalPrice-b.amountPaid).toLocaleString()})</span>}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="hidden lg:block text-right">
-                                        <span className={`text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest ${getStatusColorClass(b.status)}`}>{b.status}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* OVERDUE & EXTRA COST INFO IN LIST */}
-                            {( (b.overtimeFee || 0) > 0 || (b.extraCost || 0) > 0 ) && (
-                                <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex flex-col gap-1.5">
-                                    {(b.overtimeFee || 0) > 0 && (
-                                        <div className="flex items-center gap-2 text-[10px] font-black text-red-700 uppercase">
-                                            <AlertTriangle size={12}/> Biaya Overtime: Rp {b.overtimeFee?.toLocaleString()}
-                                        </div>
-                                    )}
-                                    {(b.extraCost || 0) > 0 && (
-                                        <div className="flex flex-col gap-0.5">
-                                            <div className="flex items-center gap-2 text-[10px] font-black text-orange-700 uppercase">
-                                                <Info size={12}/> Biaya Extra: Rp {b.extraCost?.toLocaleString()}
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center gap-3">
+                                                <h4 className="font-black text-slate-800 text-lg uppercase tracking-tight">{car?.name} <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black border border-slate-200 ml-2">{car?.plate}</span></h4>
                                             </div>
-                                            {b.extraCostDescription && (
-                                                <div className="text-[9px] text-slate-600 font-bold ml-5">
-                                                    Ket: {b.extraCostDescription}
-                                                </div>
-                                            )}
+                                            <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-600"/> {new Date(b.startDate).toLocaleDateString('id-ID')}</span>
+                                                <span className="flex items-center gap-1.5 text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md"><ClockIcon size={14}/> {diffDays} HARI</span>
+                                                <span className="flex items-center gap-1.5 text-red-600 uppercase"><UserIcon size={14}/> {b.customerName}</span>
+                                                <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                                                    <Wallet size={14}/> Rp {b.totalPrice.toLocaleString()} {isDue && b.status !== BookingStatus.CANCELLED && <span className="text-[10px] opacity-70">(Sisa: {(b.totalPrice-b.amountPaid).toLocaleString()})</span>}
+                                                </span>
+                                            </div>
                                         </div>
-                                    )}
+                                        <div className="hidden lg:block text-right">
+                                            <span className={`text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest ${getStatusColorClass(b.status)}`}>{b.status}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
+                                
+                                {/* OVERDUE & EXTRA COST INFO IN LIST */}
+                                {( (b.overtimeFee || 0) > 0 || (b.extraCost || 0) > 0 ) && (
+                                    <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex flex-col gap-1.5">
+                                        {(b.overtimeFee || 0) > 0 && (
+                                            <div className="flex items-center gap-2 text-[10px] font-black text-red-700 uppercase">
+                                                <AlertTriangle size={12}/> Biaya Overtime: Rp {b.overtimeFee?.toLocaleString()}
+                                            </div>
+                                        )}
+                                        {(b.extraCost || 0) > 0 && (
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="flex items-center gap-2 text-[10px] font-black text-orange-700 uppercase">
+                                                    <Info size={12}/> Biaya Extra: Rp {b.extraCost?.toLocaleString()}
+                                                </div>
+                                                {b.extraCostDescription && (
+                                                    <div className="text-[9px] text-slate-600 font-bold ml-5">
+                                                        Ket: {b.extraCostDescription}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
-                            <div className="flex flex-wrap gap-2 w-full justify-start border-t pt-4">
-                                {isDue && b.status !== BookingStatus.CANCELLED && (
-                                    <button type="button" onClick={() => handleLunasiAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-colors shadow-lg shadow-green-100 active:scale-95">
-                                        <CheckCircle size={16}/> Lunasi
-                                    </button>
-                                )}
-                                {b.status === BookingStatus.ACTIVE && (
-                                    <button type="button" onClick={() => handleSelesaiAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 active:scale-95">
-                                        <History size={16}/> Selesai
-                                    </button>
-                                )}
-                                {b.status === BookingStatus.BOOKED && (
-                                    <button type="button" onClick={() => handleCancelAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-colors active:scale-95">
-                                        <XCircle size={16}/> Cancel
-                                    </button>
-                                )}
-                                <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
-                                <button type="button" onClick={() => window.open(generateWhatsAppLink(b, car!), '_blank')} className="p-2.5 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors border border-green-100"><MessageCircle size={20}/></button>
-                                <button type="button" onClick={() => generateInvoicePDF(b, car!)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100"><Zap size={20}/></button>
-                                <button type="button" onClick={() => handleEdit(b)} className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 border border-slate-100"><Edit2 size={20}/></button>
-                                {b.status !== BookingStatus.CANCELLED && <button type="button" onClick={() => openChecklistModal(b)} className={`p-2.5 rounded-xl border ${b.checklist ? 'bg-green-600 text-white border-green-700' : 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100 border-yellow-100'}`}><ClipboardCheck size={20}/></button>}
-                                {isSuperAdmin && <button type="button" onClick={() => handleDelete(b.id)} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 border border-slate-100"><Trash2 size={20}/></button>}
+                                <div className="flex flex-wrap gap-2 w-full justify-start border-t pt-4">
+                                    {isDue && b.status !== BookingStatus.CANCELLED && (
+                                        <button type="button" onClick={() => handleLunasiAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-colors shadow-lg shadow-green-100 active:scale-95">
+                                            <CheckCircle size={16}/> Lunasi
+                                        </button>
+                                    )}
+                                    {b.status === BookingStatus.ACTIVE && (
+                                        <button type="button" onClick={() => handleSelesaiAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 active:scale-95">
+                                            <History size={16}/> Selesai
+                                        </button>
+                                    )}
+                                    {b.status === BookingStatus.BOOKED && (
+                                        <button type="button" onClick={() => handleCancelAction(b)} className="flex items-center gap-1.5 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-colors active:scale-95">
+                                            <XCircle size={16}/> Cancel
+                                        </button>
+                                    )}
+                                    <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
+                                    <button type="button" onClick={() => window.open(generateWhatsAppLink(b, car!), '_blank')} className="p-2.5 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors border border-green-100"><MessageCircle size={20}/></button>
+                                    <button type="button" onClick={() => generateInvoicePDF(b, car!)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100"><Zap size={20}/></button>
+                                    <button type="button" onClick={() => handleEdit(b)} className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 border border-slate-100"><Edit2 size={20}/></button>
+                                    {b.status !== BookingStatus.CANCELLED && <button type="button" onClick={() => openChecklistModal(b)} className={`p-2.5 rounded-xl border ${b.checklist ? 'bg-green-600 text-white border-green-700' : 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100 border-yellow-100'}`}><ClipboardCheck size={20}/></button>}
+                                    {isSuperAdmin && <button type="button" onClick={() => handleDelete(b.id)} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 border border-slate-100"><Trash2 size={20}/></button>}
+                                </div>
                             </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                /* TIMELINE VIEW */
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                        <h4 className="font-bold text-slate-700 text-sm">Visual Timeline (14 Hari Kedepan)</h4>
+                        <div className="flex gap-2">
+                            <span className="text-[10px] flex items-center gap-1"><span className="w-3 h-3 bg-indigo-500 rounded-sm"></span> Booked</span>
+                            <span className="text-[10px] flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Active</span>
                         </div>
-                    );
-                })}
-            </div>
+                    </div>
+                    <div className="min-w-[800px] p-4">
+                        <div className="grid grid-cols-[150px_repeat(14,1fr)] gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+                            {/* Header */}
+                            <div className="bg-slate-50 p-2 font-bold text-xs text-slate-500 flex items-center justify-center">Unit</div>
+                            {Array.from({length: 14}).map((_, i) => {
+                                const d = new Date(filterStartDate || new Date());
+                                d.setDate(d.getDate() + i);
+                                return (
+                                    <div key={i} className="bg-slate-50 p-2 text-center">
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase">{d.toLocaleDateString('id-ID', {weekday: 'short'})}</div>
+                                        <div className="text-xs font-black text-slate-700">{d.getDate()}</div>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Rows */}
+                            {cars.map(car => (
+                                <React.Fragment key={car.id}>
+                                    <div className="bg-white p-2 border-r border-slate-100 flex items-center gap-2">
+                                        <img src={car.image} className="w-8 h-6 object-cover rounded" />
+                                        <div className="overflow-hidden">
+                                            <div className="text-[10px] font-bold text-slate-800 truncate">{car.name}</div>
+                                            <div className="text-[8px] text-slate-500">{car.plate}</div>
+                                        </div>
+                                    </div>
+                                    {Array.from({length: 14}).map((_, i) => {
+                                        const d = new Date(filterStartDate || new Date());
+                                        d.setDate(d.getDate() + i);
+                                        const dateStr = d.toISOString().split('T')[0];
+                                        
+                                        // Find booking for this car on this date
+                                        const booking = bookings.find(b => {
+                                            if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.MAINTENANCE) return false;
+                                            const start = b.startDate.split('T')[0];
+                                            const end = b.endDate.split('T')[0];
+                                            return b.carId === car.id && dateStr >= start && dateStr <= end;
+                                        });
+
+                                        return (
+                                            <div key={i} className="bg-white p-1 relative">
+                                                {booking && (
+                                                    <div 
+                                                        onClick={() => handleEdit(booking)}
+                                                        className={`w-full h-full rounded cursor-pointer text-[8px] flex items-center justify-center text-white font-bold opacity-90 hover:opacity-100 transition-opacity ${booking.status === BookingStatus.ACTIVE ? 'bg-green-500' : 'bg-indigo-500'}`}
+                                                        title={`${booking.customerName} (${booking.status})`}
+                                                    >
+                                                        {booking.customerName.slice(0,3)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
       )}
       {isChecklistModalOpen && checklistBooking && (
