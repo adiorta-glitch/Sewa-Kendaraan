@@ -48,15 +48,21 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
     if (isPartnerView) setCategory('Setor Mitra');
   }, [isDriverView, isPartnerView]);
 
-  // Handle incoming navigation state (e.g. "Pay this transaction")
+  // Handle incoming navigation state
   useEffect(() => {
+    // Action: Pay
     if (location.state?.action === 'pay' && location.state?.transactionId && transactions.length > 0) {
         const txToPay = transactions.find(t => t.id === location.state.transactionId);
         if (txToPay) {
             handlePay(txToPay);
-            // Clear location state to prevent reopening on reload/re-render
             window.history.replaceState({}, document.title);
         }
+    }
+    // Action: Create (New Expense)
+    if (location.state?.action === 'create') {
+        resetForm();
+        setIsModalOpen(true);
+        window.history.replaceState({}, document.title);
     }
   }, [location.state, transactions]);
 
@@ -383,11 +389,9 @@ const ExpensesPage: React.FC<Props> = ({ isDriverView = false, isPartnerView = f
                                                 <button onClick={() => handleEdit(t)} className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100" title="Edit">
                                                     <Edit2 size={16}/>
                                                 </button>
-                                                {isSuperAdmin && (
-                                                    <button onClick={() => handleDelete(t.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100" title="Hapus">
-                                                        <Trash2 size={16}/>
-                                                    </button>
-                                                )}
+                                                <button onClick={() => handleDelete(t.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100" title="Hapus">
+                                                    <Trash2 size={16}/>
+                                                </button>
                                             </div>
                                         </td>
                                     )}

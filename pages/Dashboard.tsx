@@ -4,7 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Booking, BookingStatus, Car, PaymentStatus, AppSettings, Transaction } from '../types';
 import { getStoredData, DEFAULT_SETTINGS } from '../services/dataService';
 import { getCurrentUser } from '../services/authService';
-import { AlertCircle, CheckCircle, TrendingUp, Car as CarIcon, Clock, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Map, Grid, User as UserIcon, Wallet, PieChart, UserCircle, Settings, Users, Percent, Filter, Navigation } from 'lucide-react';
+import { AlertCircle, CheckCircle, TrendingUp, Car as CarIcon, Clock, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Map, Grid, User as UserIcon, Wallet, PieChart, UserCircle, Settings, Users, Percent, Filter, Navigation, CalendarRange, TrendingDown, Receipt, CalendarClock, UserCog, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 
@@ -22,11 +22,11 @@ const MobileHeader = ({ user, settings }: { user: any, settings: AppSettings }) 
     </div>
 );
 
-const MenuItem = ({ icon: Icon, label, onClick, to }: any) => {
+const MenuItem = ({ icon: Icon, label, onClick, to, state }: any) => {
     const navigate = useNavigate();
     const handleClick = () => {
         if (onClick) onClick();
-        if (to) navigate(to);
+        if (to) navigate(to, { state: state });
     };
 
     return (
@@ -87,43 +87,48 @@ const Dashboard = () => {
   }, []);
 
   const isDriver = user?.role === 'driver';
+  const isPartner = user?.role === 'partner';
   
-  // Filter Bookings for Display
-  const myBookings = isDriver 
-    ? bookings.filter(b => b.driverId === user?.linkedDriverId && b.status !== BookingStatus.CANCELLED) 
-    : bookings;
+  // --- DATA FILTERING LOGIC ---
 
-  // Stats Calculation
-  const activeUnits = isDriver 
-    ? myBookings.filter(b => b.status === BookingStatus.ACTIVE).length 
-    : bookings.filter(b => b.status === BookingStatus.ACTIVE).length;
+  // 1. Filter Cars based on Role
+  const myCars = isPartner 
+    ? cars.filter(c => c.partnerId === user?.linkedPartnerId)
+    : cars;
 
-  const upcomingReturns = isDriver 
-    ? myBookings.filter(b => {
-        if(b.status !== BookingStatus.ACTIVE) return false;
-        const end = new Date(b.endDate);
-        const now = new Date();
-        const diff = end.getTime() - now.getTime();
-        return diff > 0 && diff < 86400000;
-    }).length
-    : bookings.filter(b => {
-        if(b.status !== BookingStatus.ACTIVE) return false;
-        const end = new Date(b.endDate);
-        const now = new Date();
-        const diff = end.getTime() - now.getTime();
-        return diff > 0 && diff < 86400000; 
-    }).length;
+  // 2. Filter Bookings based on Role
+  let myBookings = bookings;
+  if (isDriver) {
+      myBookings = bookings.filter(b => b.driverId === user?.linkedDriverId && b.status !== BookingStatus.CANCELLED);
+  } else if (isPartner) {
+      const partnerCarIds = myCars.map(c => c.id);
+      myBookings = bookings.filter(b => partnerCarIds.includes(b.carId) && b.status !== BookingStatus.CANCELLED);
+  } else {
+      // Admin sees active/booked/completed (excludes cancelled from main view usually, but we keep all for admin except logic below)
+      myBookings = bookings;
+  }
+
+  // --- STATS CALCULATION ---
+
+  const activeUnits = myBookings.filter(b => b.status === BookingStatus.ACTIVE).length;
+
+  const upcomingReturns = myBookings.filter(b => {
+      if(b.status !== BookingStatus.ACTIVE) return false;
+      const end = new Date(b.endDate);
+      const now = new Date();
+      const diff = end.getTime() - now.getTime();
+      return diff > 0 && diff < 86400000;
+  }).length;
   
-  // For Driver: Use this for "Total Tasks This Month" instead of revenue
-  const driverMonthTasks = isDriver 
-    ? myBookings.filter(b => {
-        const bDate = new Date(b.startDate);
-        const now = new Date();
-        return bDate.getMonth() === now.getMonth() && bDate.getFullYear() === now.getFullYear();
-    }).length
-    : 0;
+  // For Driver: "Total Tasks This Month"
+  // For Partner/Admin: "Today's Revenue" (Omset Hari Ini from THEIR bookings)
+  const driverMonthTasks = myBookings.filter(b => {
+      const bDate = new Date(b.startDate);
+      const now = new Date();
+      return bDate.getMonth() === now.getMonth() && bDate.getFullYear() === now.getFullYear();
+  }).length;
 
-  const todayRevenue = bookings
+  const todayRevenue = myBookings
     .filter(b => {
         const today = new Date().toISOString().split('T')[0];
         return b.startDate.startsWith(today) && b.status !== BookingStatus.CANCELLED;
@@ -196,21 +201,48 @@ const Dashboard = () => {
                     <MenuItem to="/drivers" icon={UserCircle} label="Profil" />
                     <MenuItem to="/settings" icon={Settings} label="Akun" />
                   </>
+              ) : isPartner ? (
+                  <>
+                    <MenuItem to="/fleet" icon={CarIcon} label="Unit Saya" />
+                    <MenuItem to="/tracking" icon={Map} label="Tracking" />
+                    <MenuItem to="/partners" icon={Wallet} label="Pendapatan" />
+                    <MenuItem to="/expenses" icon={Receipt} label="Riwayat" />
+                    
+                    <MenuItem to="/settings" icon={Settings} label="Akun" />
+                  </>
               ) : (
                   <>
-                    <MenuItem to="/booking" icon={CalendarIcon} label="Booking" />
-                    <MenuItem to="/tracking" icon={Map} label="Tracking" />
+                    <MenuItem to="/booking" icon={CalendarRange} label="Booking" />
+                    <MenuItem to="/expenses" state={{ action: 'create' }} icon={TrendingDown} label="Pengeluaran" />
                     <MenuItem to="/fleet" icon={CarIcon} label="Armada" />
-                    <MenuItem to="/customers" icon={UserIcon} label="Pelanggan" />
+                    <MenuItem to="/customers" icon={Users} label="Pelanggan" />
                     
                     <MenuItem to="/expenses" icon={Wallet} label="Keuangan" />
+                    <MenuItem to="/high-season" icon={CalendarClock} label="Highseason" />
                     <MenuItem to="/statistics" icon={PieChart} label="Statistik" />
-                    <MenuItem to="/settings" icon={Settings} label="Setting" />
                     <MenuItem icon={Grid} label="Lainnya" onClick={() => setIsMoreMenuOpen(true)} />
                   </>
               )}
           </div>
       </div>
+
+      {/* MORE MENU MODAL */}
+      {isMoreMenuOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-bold text-lg text-slate-800">Menu Lainnya</h3>
+                      <button onClick={() => setIsMoreMenuOpen(false)} className="p-1 rounded-full bg-slate-100 text-slate-500 hover:text-red-600"><X size={20}/></button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                      <MenuItem to="/drivers" icon={UserCircle} label="Driver" onClick={() => setIsMoreMenuOpen(false)} />
+                      <MenuItem to="/partners" icon={UserCog} label="Mitra" onClick={() => setIsMoreMenuOpen(false)} />
+                      <MenuItem to="/tracking" icon={Map} label="Tracking" onClick={() => setIsMoreMenuOpen(false)} />
+                      <MenuItem to="/settings" icon={Settings} label="Setting" onClick={() => setIsMoreMenuOpen(false)} />
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Calendar Section */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -227,7 +259,7 @@ const Dashboard = () => {
                   <button onClick={goToToday} className="text-xs text-indigo-600 font-bold hover:underline">Hari Ini</button>
               </div>
 
-              {/* Car Filter Dropdown (Hidden for Driver usually, but useful if they drive multiple cars?) - Keeping simple for driver */}
+              {/* Car Filter Dropdown */}
               {!isDriver && (
                   <div className="flex items-center gap-2 w-full md:w-auto">
                       <Filter size={16} className="text-slate-400" />
@@ -237,7 +269,8 @@ const Dashboard = () => {
                           onChange={e => setSelectedCarFilter(e.target.value)}
                       >
                           <option value="All">Semua Mobil</option>
-                          {cars.map(c => (
+                          {/* LIST CARS BASED ON ROLE (Admin=All, Partner=MyCars) */}
+                          {myCars.map(c => (
                               <option key={c.id} value={c.id}>{c.name} - {c.plate}</option>
                           ))}
                       </select>
@@ -315,8 +348,8 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Chart Section - HIDE FOR DRIVER */}
-      {!isDriver && (
+      {/* Chart Section - HIDE FOR DRIVER AND PARTNER (To keep Partner view simple like Driver) */}
+      {!isDriver && !isPartner && (
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm min-w-0">
             <h3 className="font-bold text-slate-800 mb-4">Grafik Pendapatan (7 Hari)</h3>
             <div style={{ width: '100%', height: 300 }}>

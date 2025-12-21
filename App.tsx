@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Car, CalendarRange, Users, Wallet, Menu, X, UserCog, CalendarClock, Settings, LogOut, MapPin, Receipt, PieChart, UserCircle, Loader2, RefreshCw, FileText, Palette, List, HelpCircle, Map } from 'lucide-react';
+import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Car, CalendarRange, Users, Wallet, Menu, X, UserCog, CalendarClock, Settings, LogOut, MapPin, Receipt, PieChart, UserCircle, Loader2, RefreshCw, FileText, Palette, List, HelpCircle, Map, ChevronLeft } from 'lucide-react';
 import { initializeData, getStoredData, DEFAULT_SETTINGS } from './services/dataService';
 import { getCurrentUser, logout } from './services/authService';
 import { User, AppSettings } from './types';
@@ -52,6 +52,8 @@ interface AppLayoutProps {
 
 // Layout Component to wrap protected routes
 const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -65,6 +67,7 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
   
   // Admin & SuperAdmin share most operational views
   const isOperational = isStaff || isSuperAdmin;
+  const isHome = location.pathname === '/';
 
   useEffect(() => {
     const loadedSettings = getStoredData<AppSettings>('appSettings', DEFAULT_SETTINGS);
@@ -86,6 +89,22 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
       await initializeData(); // Pull fresh from Firebase
       setIsRefreshing(false);
       window.location.reload(); 
+  };
+
+  const getPageTitle = () => {
+      switch(location.pathname) {
+          case '/booking': return 'Booking';
+          case '/fleet': return 'Armada';
+          case '/tracking': return 'Tracking';
+          case '/partners': return isPartner ? 'Saldo Saya' : 'Mitra';
+          case '/drivers': return isDriver ? 'Profil' : 'Driver';
+          case '/customers': return 'Pelanggan';
+          case '/expenses': return isDriver ? 'Reimbursement' : 'Keuangan';
+          case '/statistics': return 'Statistik';
+          case '/high-season': return 'High Season';
+          case '/settings': return 'Pengaturan';
+          default: return settings.companyName;
+      }
   };
 
   const UserProfile = ({ showName = true }) => (
@@ -147,11 +166,9 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
           {isPartner && (
               <>
                 <SidebarItem to="/" icon={LayoutDashboard} label="Dashboard" />
-                {/* Changed Fleet to Tracking for Partners */}
                 <SidebarItem to="/tracking" icon={Map} label="Tracking Unit" />
                 <SidebarItem to="/partners" icon={Wallet} label="Pendapatan" />
                 <SidebarItem to="/expenses" icon={List} label="Riwayat Setoran" />
-                <SidebarItem to="/statistics" icon={PieChart} label="Statistik Unit" />
               </>
           )}
           
@@ -171,12 +188,21 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
       </aside>
 
       {/* --- MOBILE HEADER --- */}
-      <div className="md:hidden fixed top-0 w-full bg-white dark:bg-slate-800 z-30 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex justify-between items-center pt-safe shadow-sm">
+      <div className="md:hidden fixed top-0 w-full bg-white dark:bg-slate-800 z-30 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex justify-between items-center pt-safe shadow-sm transition-all">
           <div className="flex items-center gap-2">
-             <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white">
-                 <Logo className="w-full h-full p-1" src={settings.logoUrl} />
-             </div>
-             <span className="font-black text-lg text-slate-800 dark:text-white tracking-tight">{settings.displayName || settings.companyName.split(' ')[0]}</span>
+             {isHome ? (
+                 <>
+                    <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white">
+                        <Logo className="w-full h-full p-1" src={settings.logoUrl} />
+                    </div>
+                    <span className="font-black text-lg text-slate-800 dark:text-white tracking-tight">{settings.displayName || settings.companyName.split(' ')[0]}</span>
+                 </>
+             ) : (
+                 <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-700 dark:text-white active:opacity-70">
+                     <div className="p-1 rounded-full bg-slate-100 dark:bg-slate-700"><ChevronLeft size={24} /></div>
+                     <span className="font-bold text-lg">{getPageTitle()}</span>
+                 </button>
+             )}
           </div>
           
           <div className="flex items-center gap-3">
@@ -208,30 +234,51 @@ const AppLayout = ({ children, user, onLogout }: AppLayoutProps) => {
 
       {/* --- MOBILE BOTTOM NAV --- */}
       <nav className="md:hidden fixed bottom-0 w-full bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 z-30 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-around items-center px-2 py-1">
-          <BottomNavItem to="/" icon={LayoutDashboard} label="Home" />
+        <div className="flex justify-between items-end px-2 pb-2 pt-1">
           
-          {isOperational && (
+          {isOperational ? (
               <>
                 <BottomNavItem to="/booking" icon={CalendarRange} label="Booking" />
                 <BottomNavItem to="/tracking" icon={Map} label="Tracking" />
-                <BottomNavItem to="/expenses" icon={Wallet} label="Keuangan" />
-              </>
-          )}
+                
+                {/* CENTER HOME BUTTON */}
+                <div className="relative -top-5 mx-1 flex flex-col items-center justify-center">
+                    <Link to="/" className="flex items-center justify-center w-16 h-16 bg-red-600 rounded-full shadow-lg border-4 border-slate-100 dark:border-slate-800 text-white hover:bg-red-700 transition-transform active:scale-95">
+                        <LayoutDashboard size={28} strokeWidth={2} />
+                    </Link>
+                </div>
 
-          {isDriver && (
+                <BottomNavItem to="/expenses" icon={Wallet} label="Keuangan" />
+                <BottomNavItem to="/statistics" icon={PieChart} label="Statistik" />
+              </>
+          ) : isDriver ? (
               <>
                 <BottomNavItem to="/tracking" icon={Map} label="Tugas" />
-                <BottomNavItem to="/expenses" icon={Wallet} label="Reimburse" />
-                <BottomNavItem to="/drivers" icon={UserCircle} label="Profil" />
-              </>
-          )}
+                <BottomNavItem to="/expenses" icon={Wallet} label="Klaim" />
+                
+                <div className="relative -top-5 mx-1 flex flex-col items-center justify-center">
+                    <Link to="/" className="flex items-center justify-center w-16 h-16 bg-red-600 rounded-full shadow-lg border-4 border-slate-100 dark:border-slate-800 text-white hover:bg-red-700 transition-transform active:scale-95">
+                        <LayoutDashboard size={28} strokeWidth={2} />
+                    </Link>
+                </div>
 
-          {isPartner && (
+                <BottomNavItem to="/drivers" icon={UserCircle} label="Profil" />
+                <BottomNavItem to="/settings" icon={Settings} label="Akun" />
+              </>
+          ) : (
+              // Partner
               <>
                 <BottomNavItem to="/tracking" icon={Map} label="Unit" />
                 <BottomNavItem to="/partners" icon={Wallet} label="Saldo" />
-                <BottomNavItem to="/statistics" icon={PieChart} label="Stats" />
+                
+                <div className="relative -top-5 mx-1 flex flex-col items-center justify-center">
+                    <Link to="/" className="flex items-center justify-center w-16 h-16 bg-red-600 rounded-full shadow-lg border-4 border-slate-100 dark:border-slate-800 text-white hover:bg-red-700 transition-transform active:scale-95">
+                        <LayoutDashboard size={28} strokeWidth={2} />
+                    </Link>
+                </div>
+
+                <BottomNavItem to="/expenses" icon={List} label="Riwayat" />
+                <BottomNavItem to="/settings" icon={Settings} label="Akun" />
               </>
           )}
         </div>
